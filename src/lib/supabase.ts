@@ -1,5 +1,10 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
-import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+import { env } from '$env/dynamic/public';
+
+// 用 dynamic（而非 static）env：static 版在變數缺席時會直接讓 build 失敗，
+// 這個專案刻意允許「沒設 Supabase 也要 build/跑得起來」（見 isConfigured）。
+const PUBLIC_SUPABASE_URL = env.PUBLIC_SUPABASE_URL ?? '';
+const PUBLIC_SUPABASE_ANON_KEY = env.PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 export type Knock = {
 	id: number;
