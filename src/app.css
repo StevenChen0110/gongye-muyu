@@ -1,16 +1,34 @@
 :root {
-	--paper: #f5efe3;
-	--paper-2: #efe6d6;
-	--ink: #4a4034;
-	--ink-soft: #8a7c68;
-	--wood: #a9754a;
-	--wood-dark: #7c5233;
-	--wood-light: #c99566;
-	--accent: #b8895c;
-	--line: #e0d4bf;
+	/* 紙 —— 宣紙 / 米色 */
+	--paper: #f7f1e5;
+	--paper-warm: #f2e9d8;
+	--paper-card: rgba(255, 253, 248, 0.62);
 
-	--radius: 18px;
-	--shadow-soft: 0 2px 10px rgba(94, 74, 48, 0.07);
+	/* 墨 */
+	--ink: #453b2f;
+	--ink-soft: #8b7c68;
+	--ink-faint: #b3a591;
+
+	/* 木 */
+	--wood-light: #dcab79;
+	--wood: #b47d50;
+	--wood-deep: #8b5c37;
+	--wood-slit: #4c2f1a;
+
+	/* 蒲團 */
+	--cushion: #d0a06f;
+	--cushion-deep: #b8834f;
+
+	--line: #e4d8c2;
+	--line-soft: #ece2d0;
+
+	--radius: 20px;
+	--shadow-soft: 0 2px 14px rgba(94, 74, 48, 0.06);
+	--shadow-lift: 0 6px 22px rgba(94, 74, 48, 0.1);
+
+	--serif: 'Noto Serif TC', 'Songti TC', 'STSong', 'Source Han Serif TC', serif;
+	--sans: 'PingFang TC', 'Noto Sans TC', 'Hiragino Sans', 'Microsoft JhengHei', system-ui,
+		-apple-system, sans-serif;
 
 	color-scheme: light;
 }
@@ -26,16 +44,35 @@ body {
 	min-height: 100%;
 }
 
+/* 木槌會超出木魚的框，別讓它把整頁往右撐出水平捲動 */
+html,
+body {
+	overflow-x: hidden;
+	max-width: 100%;
+}
+
 body {
 	background:
-		radial-gradient(1100px 620px at 50% -12%, #fdf8ef 0%, transparent 62%),
+		radial-gradient(1200px 680px at 50% -14%, #fffaf1 0%, transparent 60%),
+		radial-gradient(900px 500px at 50% 108%, #ece0ca 0%, transparent 60%),
 		var(--paper);
+	background-attachment: fixed;
 	color: var(--ink);
-	font-family:
-		'PingFang TC', 'Noto Sans TC', 'Hiragino Sans', 'Microsoft JhengHei', system-ui,
-		-apple-system, sans-serif;
+	font-family: var(--sans);
 	-webkit-font-smoothing: antialiased;
 	-webkit-tap-highlight-color: transparent;
+}
+
+/* 宣紙纖維感——很輕，只是不要讓底色看起來像純色塊 */
+body::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: 0;
+	pointer-events: none;
+	opacity: 0.32;
+	mix-blend-mode: multiply;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
 }
 
 button {
@@ -47,5 +84,25 @@ button {
 }
 
 ::selection {
-	background: #e8d8bf;
+	background: #e9d9bd;
+}
+
+/* 捲軸也走米色，不要出現系統藍 */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--line) transparent;
+}
+
+::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--line);
+	border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
 }

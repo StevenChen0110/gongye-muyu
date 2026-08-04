@@ -4,6 +4,8 @@
 	import { flip } from 'svelte/animate';
 	import { SINS, sinEmoji, sinLabel } from '$lib/sins';
 	import { playWoodenFish, unlockAudio, setMasterVolume, PRESETS } from '$lib/woodenFish';
+	import WoodenFishArt from '$lib/WoodenFishArt.svelte';
+	import MalletArt from '$lib/MalletArt.svelte';
 	import {
 		fetchRecentKnocks,
 		fetchTotalCount,
@@ -16,6 +18,7 @@
 
 	const FEED_MAX = 30;
 	const KNOCK_COOLDOWN_MS = 300; // 前端 rate limit：壓著狂點也不會灌 DB
+	const MILESTONE = 108; // 百八煩惱
 
 	type ToneId = 'temple' | 'classic' | 'small' | 'soft';
 	const TONES: { id: ToneId; label: string }[] = [
@@ -25,22 +28,32 @@
 		{ id: 'soft', label: '布槌' }
 	];
 
+	/** feed 文案輪替，避免 30 行長得一模一樣。依 id 決定，重繪也不會跳動。 */
+	const PHRASES = [
+		(s: string) => `有人剛剛懺悔了「${s}」`,
+		(s: string) => `某位施主承認了「${s}」`,
+		(s: string) => `有人默默放下了「${s}」`,
+		(s: string) => `一位路過的凡人坦承「${s}」`
+	];
+
 	let selectedSin = $state<string | null>(null);
 	let merit = $state(0);
 	let total = $state(0);
 	let feed = $state<Knock[]>([]);
 	let floaters = $state<{ id: number; dx: number; rot: number }[]>([]);
+	let ripples = $state<number[]>([]);
 	let striking = $state(false);
 	let pickerOpen = $state(false);
 	let hintPicker = $state(false);
 	let muted = $state(false);
 	let tone = $state<ToneId>('classic');
 	let loading = $state(true);
+	let blessing = $state(false);
 	let now = $state(Date.now());
 
 	let lastKnockAt = 0;
 	let pendingKnock = false;
-	let floaterSeq = 0;
+	let seq = 0;
 
 	const selectedLabel = $derived(selectedSin ? sinLabel(selectedSin) : null);
 
@@ -89,21 +102,28 @@
 
 		striking = false;
 		requestAnimationFrame(() => (striking = true));
-		setTimeout(() => (striking = false), 220);
+		setTimeout(() => (striking = false), 260);
 
 		merit += 1;
 		localStorage.setItem('muyu:merit', String(merit));
+		if (merit === MILESTONE) {
+			blessing = true;
+			setTimeout(() => (blessing = false), 5200);
+		}
 
-		const id = ++floaterSeq;
-		floaters = [...floaters, { id, dx: Math.random() * 60 - 30, rot: Math.random() * 16 - 8 }];
-		setTimeout(() => (floaters = floaters.filter((f) => f.id !== id)), 1400);
+		const id = ++seq;
+		floaters = [...floaters, { id, dx: Math.random() * 56 - 28, rot: Math.random() * 14 - 7 }];
+		setTimeout(() => (floaters = floaters.filter((f) => f.id !== id)), 1500);
+
+		ripples = [...ripples, id];
+		setTimeout(() => (ripples = ripples.filter((r) => r !== id)), 900);
 
 		if (!selectedSin) {
 			// 還沒選口業：先讓他聽到聲音，再溫柔地問一次
 			pendingKnock = true;
 			pickerOpen = true;
 			hintPicker = true;
-			setTimeout(() => (hintPicker = false), 1200);
+			setTimeout(() => (hintPicker = false), 1400);
 			return;
 		}
 
@@ -150,6 +170,10 @@
 		}
 	}
 
+	function phraseFor(k: Knock): string {
+		return PHRASES[k.id % PHRASES.length](sinLabel(k.sin));
+	}
+
 	function timeAgo(iso: string): string {
 		const diff = Math.max(0, now - new Date(iso).getTime());
 		const m = Math.floor(diff / 60_000);
@@ -166,25 +190,30 @@
 <div class="page">
 	<header>
 		<h1>共業木魚</h1>
-		<p class="sub">敲一下，替自己的口業積點功德。原來大家都一樣。</p>
+		<div class="rule" aria-hidden="true"><i></i>🪷<i></i></div>
+		<p class="sub">敲一下，替自己的口業積點功德。<br class="br-m" />原來大家都一樣。</p>
 	</header>
 
 	<main>
 		<section class="altar">
-			<div class="counter" aria-live="polite">
+			<p class="counter" aria-live="polite">
 				{#if loading}
 					<span class="dim">正在數大家的功德…</span>
 				{:else}
 					至今已有 <strong>{total.toLocaleString('en-US')}</strong> 人承認造口業 🙏
 				{/if}
-			</div>
+			</p>
 
 			<div class="fish-wrap">
+				<div class="ripples" aria-hidden="true">
+					{#each ripples as r (r)}
+						<span class="ripple"></span>
+					{/each}
+				</div>
+
 				{#each floaters as f (f.id)}
-					<span
-						class="floater"
-						style="--dx:{f.dx}px; --rot:{f.rot}deg"
-						out:fade={{ duration: 200 }}>功德 +1</span
+					<span class="floater" style="--dx:{f.dx}px; --rot:{f.rot}deg" out:fade={{ duration: 220 }}
+						>功德 +1</span
 					>
 				{/each}
 
@@ -195,48 +224,20 @@
 					aria-label="敲木魚"
 					title="敲我（或按空白鍵）"
 				>
-					<svg viewBox="0 0 240 200" aria-hidden="true">
-						<defs>
-							<radialGradient id="woodGrad" cx="38%" cy="28%" r="78%">
-								<stop offset="0%" stop-color="#d6a173" />
-								<stop offset="55%" stop-color="#b07d4f" />
-								<stop offset="100%" stop-color="#7f5433" />
-							</radialGradient>
-						</defs>
-						<ellipse cx="120" cy="178" rx="86" ry="12" fill="#000" opacity="0.08" />
-						<path
-							d="M120 24c58 0 100 34 100 78 0 41-42 68-100 68S20 143 20 102c0-44 42-78 100-78z"
-							fill="url(#woodGrad)"
-						/>
-						<path
-							d="M120 24c58 0 100 34 100 78 0 41-42 68-100 68S20 143 20 102c0-44 42-78 100-78z"
-							fill="none"
-							stroke="#6d4527"
-							stroke-width="3"
-							opacity="0.45"
-						/>
-						<path
-							d="M58 118c22 16 56 24 88 20 26-3 44-11 56-21"
-							fill="none"
-							stroke="#5f3b20"
-							stroke-width="9"
-							stroke-linecap="round"
-							opacity="0.75"
-						/>
-						<path
-							d="M62 66c16-14 40-22 62-22"
-							fill="none"
-							stroke="#f2d3ae"
-							stroke-width="7"
-							stroke-linecap="round"
-							opacity="0.4"
-						/>
-						<circle cx="86" cy="92" r="7" fill="#5f3b20" opacity="0.6" />
-					</svg>
+					<span class="fish-art"><WoodenFishArt /></span>
+					<span class="mallet" aria-hidden="true"><MalletArt /></span>
 				</button>
 			</div>
 
-			<p class="merit">你今天的功德：<strong>{merit}</strong></p>
+			<p class="merit">
+				你的功德 <strong>{merit}</strong>
+			</p>
+
+			{#if blessing}
+				<p class="blessing" transition:fade={{ duration: 400 }}>
+					敲滿 {MILESTONE} 下，百八煩惱先放一邊 🙏
+				</p>
+			{/if}
 
 			<div class="sin-zone">
 				{#if selectedSin && !pickerOpen}
@@ -248,7 +249,7 @@
 					<p class="tip">繼續敲，都算同一種口業。</p>
 				{:else}
 					<p class="ask" class:hint={hintPicker}>
-						{selectedSin ? '換一個？' : '你剛剛犯的是哪一種口業？'}
+						{selectedSin ? '這次想懺悔哪一種？' : '你剛剛犯的是哪一種口業？'}
 					</p>
 					<div class="sins">
 						{#each SINS as sin (sin.id)}
@@ -257,7 +258,7 @@
 								class:active={sin.id === selectedSin}
 								onclick={() => selectSin(sin.id)}
 							>
-								<span class="emoji">{sin.emoji}</span>{sin.label}
+								<span class="emoji">{sin.emoji}</span><span>{sin.label}</span>
 							</button>
 						{/each}
 					</div>
@@ -282,10 +283,10 @@
 		</section>
 
 		<aside class="feed">
-			<h2>大家的懺悔</h2>
+			<h2><span>大家的懺悔</span></h2>
 			{#if !isConfigured}
 				<p class="empty">
-					尚未設定 Supabase，所以看不到別人。<br />照著 README 設好
+					還沒接上 Supabase，暫時只有你一個人在敲。<br />照 README 設好
 					<code>.env</code> 就會有人陪你了。
 				</p>
 			{:else if loading}
@@ -296,13 +297,13 @@
 				<ul>
 					{#each feed as k, i (k.id)}
 						<li
-							animate:flip={{ duration: 260 }}
-							in:fly={{ y: -14, duration: 320 }}
-							out:fade={{ duration: 200 }}
-							style="opacity:{Math.max(0.28, 1 - i / (FEED_MAX * 0.9))}"
+							animate:flip={{ duration: 280 }}
+							in:fly={{ y: -16, duration: 360 }}
+							out:fade={{ duration: 220 }}
+							style="--dim:{Math.max(0.3, 1 - i / (FEED_MAX * 0.85))}"
 						>
 							<span class="bell">{sinEmoji(k.sin)}</span>
-							<span class="text">有人剛剛懺悔了「{sinLabel(k.sin)}」</span>
+							<span class="text">{phraseFor(k)}</span>
 							<span class="when">{timeAgo(k.created_at)}</span>
 						</li>
 					{/each}
@@ -312,40 +313,66 @@
 	</main>
 
 	<footer>
-		<p>這裡只懺悔自己，不檢舉別人。嘴賤是共業，功德是自己的。</p>
+		<p>這裡只懺悔自己，不檢舉別人。<br class="br-m" />嘴賤是共業，功德是自己的。</p>
 	</footer>
 </div>
 
 <style>
 	.page {
-		max-width: 1040px;
+		position: relative;
+		z-index: 1;
+		max-width: 1060px;
 		margin: 0 auto;
-		padding: 2.5rem 1.25rem 3rem;
+		padding: 3rem 1.25rem 3.5rem;
 	}
 
 	header {
 		text-align: center;
-		margin-bottom: 2rem;
+		margin-bottom: 2.4rem;
 	}
 
 	h1 {
 		margin: 0;
-		font-size: clamp(1.9rem, 5vw, 2.6rem);
-		letter-spacing: 0.16em;
+		font-family: var(--serif);
+		font-size: clamp(2rem, 6vw, 2.9rem);
 		font-weight: 600;
+		letter-spacing: 0.22em;
+		text-indent: 0.22em; /* 補掉 letter-spacing 在尾字產生的偏移 */
+		color: var(--ink);
+	}
+
+	.rule {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.7rem;
+		margin: 0.9rem 0 0.8rem;
+		font-size: 0.8rem;
+		opacity: 0.75;
+	}
+
+	.rule i {
+		display: block;
+		width: clamp(40px, 12vw, 78px);
+		height: 1px;
+		background: linear-gradient(to var(--dir, right), transparent, var(--line));
+	}
+
+	.rule i:last-child {
+		--dir: left;
 	}
 
 	.sub {
-		margin: 0.6rem 0 0;
+		margin: 0;
 		color: var(--ink-soft);
 		font-size: 0.95rem;
-		line-height: 1.7;
+		line-height: 1.85;
 	}
 
 	main {
 		display: grid;
-		grid-template-columns: 1.25fr 1fr;
-		gap: 2rem;
+		grid-template-columns: 1.22fr 1fr;
+		gap: 2.4rem;
 		align-items: start;
 	}
 
@@ -354,109 +381,206 @@
 		flex-direction: column;
 		align-items: center;
 		text-align: center;
+		min-width: 0; /* grid 子項預設 min-width:auto，不加這行整欄不會縮 */
 	}
 
 	.counter {
-		font-size: 0.92rem;
+		margin: 0;
+		font-size: 0.9rem;
 		color: var(--ink-soft);
-		background: rgba(255, 255, 255, 0.55);
+		background: var(--paper-card);
 		border: 1px solid var(--line);
 		border-radius: 999px;
-		padding: 0.45rem 1.1rem;
+		padding: 0.5rem 1.15rem;
+		box-shadow: var(--shadow-soft);
 	}
 
 	.counter strong {
-		color: var(--wood-dark);
-		font-size: 1.05rem;
+		font-family: var(--serif);
+		color: var(--wood-deep);
+		font-size: 1.1rem;
+		letter-spacing: 0.03em;
 	}
 
 	.dim {
 		opacity: 0.7;
 	}
 
+	footer {
+		margin-top: 3rem;
+		text-align: center;
+		font-size: 0.76rem;
+		line-height: 1.9;
+		color: var(--ink-faint);
+	}
+
+	footer p {
+		margin: 0;
+	}
+
+	.br-m {
+		display: none;
+	}
+
+	/* ── 木魚 ── */
 	.fish-wrap {
 		position: relative;
-		margin: 1.2rem 0 0.4rem;
-		width: min(340px, 78vw);
+		width: min(360px, 80vw);
+		margin: 1.5rem 0 0.6rem;
 	}
 
 	.fish {
 		display: block;
 		width: 100%;
-		padding: 1.4rem;
+		position: relative;
+		padding: 0;
 		border-radius: 50%;
-		transition: transform 0.16s ease;
 		touch-action: manipulation;
 	}
 
-	.fish svg {
-		width: 100%;
-		height: auto;
+	.fish-art {
 		display: block;
-		filter: drop-shadow(0 10px 18px rgba(110, 76, 42, 0.22));
-		transition: transform 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+		filter: drop-shadow(0 14px 20px rgba(110, 76, 42, 0.2));
+		transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.5);
 	}
 
-	.fish:active svg,
-	.fish.striking svg {
-		transform: scale(0.94) translateY(4px);
+	.fish-art :global(svg) {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+
+	.fish:active .fish-art,
+	.fish.striking .fish-art {
+		transform: scale(0.955) translateY(5px);
+	}
+
+	/* 木槌：平常斜靠著，敲的時候落下 */
+	.mallet {
+		position: absolute;
+		right: -16%;
+		top: 20%;
+		width: 32%;
+		transform-origin: 30% 94%;
+		transform: rotate(30deg);
+		transition: transform 0.22s cubic-bezier(0.3, 0.8, 0.4, 1.3);
+		pointer-events: none;
+		filter: drop-shadow(0 6px 10px rgba(110, 76, 42, 0.22));
+	}
+
+	.mallet :global(svg) {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+
+	.fish:active .mallet,
+	.fish.striking .mallet {
+		transform: rotate(-6deg);
+		transition-duration: 0.09s;
+	}
+
+	/* 敲擊漣漪 —— 聲音擴散出去的感覺 */
+	.ripples {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+		pointer-events: none;
+	}
+
+	.ripple {
+		position: absolute;
+		width: 62%;
+		aspect-ratio: 1;
+		border: 1.5px solid var(--wood);
+		border-radius: 50%;
+		opacity: 0;
+		animation: ripple 0.9s cubic-bezier(0.2, 0.7, 0.35, 1) forwards;
+	}
+
+	@keyframes ripple {
+		0% {
+			transform: scale(0.85);
+			opacity: 0.42;
+		}
+		100% {
+			transform: scale(1.65);
+			opacity: 0;
+		}
 	}
 
 	.floater {
 		position: absolute;
 		left: 50%;
-		top: 12%;
-		transform: translateX(-50%);
-		font-size: 1.05rem;
+		top: 8%;
+		z-index: 3;
+		font-family: var(--serif);
+		font-size: 1.1rem;
 		font-weight: 600;
-		color: var(--wood-dark);
-		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
-		pointer-events: none;
-		animation: rise 1.4s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+		color: var(--wood-deep);
+		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
 		white-space: nowrap;
-		z-index: 2;
+		pointer-events: none;
+		animation: rise 1.5s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
 	}
 
 	@keyframes rise {
 		0% {
 			opacity: 0;
-			transform: translate(calc(-50% + var(--dx)), 10px) scale(0.8) rotate(var(--rot));
+			transform: translate(calc(-50% + var(--dx)), 14px) scale(0.75) rotate(var(--rot));
 		}
-		18% {
+		20% {
 			opacity: 1;
-			transform: translate(calc(-50% + var(--dx)), -6px) scale(1.05) rotate(var(--rot));
+			transform: translate(calc(-50% + var(--dx)), -4px) scale(1.06) rotate(var(--rot));
 		}
 		100% {
 			opacity: 0;
-			transform: translate(calc(-50% + var(--dx)), -90px) scale(1) rotate(var(--rot));
+			transform: translate(calc(-50% + var(--dx)), -104px) scale(1) rotate(var(--rot));
 		}
 	}
 
 	.merit {
-		margin: 0.2rem 0 1.4rem;
+		margin: 0.3rem 0 0;
+		font-size: 0.86rem;
 		color: var(--ink-soft);
-		font-size: 0.9rem;
+		letter-spacing: 0.04em;
 	}
 
 	.merit strong {
-		color: var(--wood-dark);
+		font-family: var(--serif);
+		font-size: 1.15rem;
+		color: var(--wood-deep);
+		margin-left: 0.15em;
 	}
 
+	.blessing {
+		margin: 0.7rem 0 0;
+		font-size: 0.84rem;
+		color: var(--wood-deep);
+		background: #f4e3cb;
+		border: 1px solid var(--wood-light);
+		border-radius: 999px;
+		padding: 0.4rem 1rem;
+	}
+
+	/* ── 口業選單：木牌 ── */
 	.sin-zone {
 		width: 100%;
-		max-width: 420px;
+		max-width: min(430px, 100%);
+		margin-top: 1.6rem;
 	}
 
 	.ask {
-		margin: 0 0 0.75rem;
-		font-size: 0.92rem;
+		margin: 0 0 0.85rem;
+		font-size: 0.9rem;
 		color: var(--ink-soft);
 		transition: color 0.2s;
 	}
 
 	.ask.hint {
-		color: var(--wood-dark);
-		animation: nudge 0.5s ease;
+		color: var(--wood-deep);
+		animation: nudge 0.55s ease;
 	}
 
 	@keyframes nudge {
@@ -464,85 +588,97 @@
 		100% {
 			transform: translateY(0);
 		}
-		40% {
-			transform: translateY(-4px);
+		45% {
+			transform: translateY(-5px);
 		}
 	}
 
 	.sins {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 0.55rem;
+		gap: 0.6rem;
 	}
 
 	.sin {
-		background: rgba(255, 255, 255, 0.65);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.1rem;
+		background: linear-gradient(#fffdf9, #f7efe1);
 		border: 1px solid var(--line);
-		border-radius: 14px;
-		padding: 0.7rem 0.6rem;
-		font-size: 0.88rem;
+		border-radius: 13px;
+		padding: 0.78rem 0.6rem;
+		font-size: 0.87rem;
+		color: var(--ink);
 		box-shadow: var(--shadow-soft);
 		transition:
-			transform 0.12s ease,
+			transform 0.14s ease,
 			border-color 0.2s,
-			background 0.2s;
+			box-shadow 0.2s;
 	}
 
 	.sin:hover {
 		transform: translateY(-2px);
-		border-color: var(--accent);
+		border-color: var(--wood-light);
+		box-shadow: var(--shadow-lift);
 	}
 
 	.sin.active {
-		background: #f6e7d3;
+		background: linear-gradient(#f6e5cd, #efd9ba);
 		border-color: var(--wood);
 	}
 
 	.emoji {
-		margin-right: 0.35rem;
+		margin-right: 0.4rem;
 	}
 
 	.current {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		gap: 0.6rem;
-		width: 100%;
-		justify-content: center;
-		background: #f6e7d3;
+		background: linear-gradient(#f6e5cd, #f0dcc0);
 		border: 1px solid var(--wood-light);
 		border-radius: 999px;
-		padding: 0.6rem 1rem;
+		padding: 0.55rem 0.65rem 0.55rem 0.55rem;
 		box-shadow: var(--shadow-soft);
+		transition: box-shadow 0.2s;
+	}
+
+	.current:hover {
+		box-shadow: var(--shadow-lift);
 	}
 
 	.tag {
-		font-size: 0.72rem;
-		color: #fff;
+		font-size: 0.68rem;
+		letter-spacing: 0.06em;
+		color: #fffdf8;
 		background: var(--wood);
 		border-radius: 999px;
-		padding: 0.15rem 0.5rem;
+		padding: 0.2rem 0.55rem;
 	}
 
 	.cur-label {
 		font-size: 0.92rem;
-		color: var(--wood-dark);
 		font-weight: 600;
+		color: var(--wood-deep);
 	}
 
 	.change {
-		font-size: 0.75rem;
+		font-size: 0.74rem;
 		color: var(--ink-soft);
-		border-bottom: 1px dashed var(--ink-soft);
+		border-bottom: 1px dashed var(--ink-faint);
+		padding-bottom: 1px;
 	}
 
 	.tip {
-		margin: 0.6rem 0 0;
+		margin: 0.7rem 0 0;
 		font-size: 0.78rem;
-		color: var(--ink-soft);
+		color: var(--ink-faint);
 	}
 
+	/* ── 音色 ── */
 	.audio-bar {
-		margin-top: 1.6rem;
+		margin-top: 1.9rem;
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -550,140 +686,188 @@
 		justify-content: center;
 	}
 
+	.mute {
+		font-size: 0.76rem;
+		color: var(--ink-soft);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		padding: 0.32rem 0.8rem;
+		background: var(--paper-card);
+		transition: border-color 0.2s;
+	}
+
+	.mute:hover {
+		border-color: var(--wood-light);
+	}
+
 	.tones {
 		display: flex;
-		gap: 0.25rem;
-		background: rgba(255, 255, 255, 0.5);
+		gap: 0.2rem;
+		background: var(--paper-card);
 		border: 1px solid var(--line);
 		border-radius: 999px;
 		padding: 0.2rem;
 	}
 
 	.tone {
-		font-size: 0.75rem;
+		font-size: 0.74rem;
 		color: var(--ink-soft);
 		border-radius: 999px;
-		padding: 0.22rem 0.6rem;
+		padding: 0.24rem 0.62rem;
 		transition:
 			background 0.18s,
 			color 0.18s;
 	}
 
+	.tone:hover {
+		color: var(--wood-deep);
+	}
+
 	.tone.active {
 		background: var(--wood);
-		color: #fff;
+		color: #fffdf8;
 	}
 
-	.mute {
-		font-size: 0.78rem;
-		color: var(--ink-soft);
-		border: 1px solid var(--line);
-		border-radius: 999px;
-		padding: 0.3rem 0.8rem;
-		background: rgba(255, 255, 255, 0.5);
-	}
-
+	/* ── 懺悔 feed ── */
 	.feed {
-		background: rgba(255, 255, 255, 0.52);
+		position: relative;
+		background: var(--paper-card);
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
-		padding: 1.1rem 1.1rem 0.6rem;
+		padding: 1.3rem 1.3rem 0.5rem;
 		box-shadow: var(--shadow-soft);
-		max-height: 70vh;
+		min-width: 0;
+		min-height: 340px;
+		max-height: 74vh;
 		overflow: hidden;
-		position: relative;
-	}
-
-	.feed::after {
-		content: '';
-		position: absolute;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		height: 64px;
-		background: linear-gradient(to bottom, rgba(250, 246, 238, 0), #faf6ee);
-		pointer-events: none;
 	}
 
 	.feed h2 {
-		margin: 0 0 0.9rem;
+		display: flex;
+		align-items: center;
+		gap: 0.7rem;
+		margin: 0 0 1rem;
+		font-family: var(--serif);
 		font-size: 0.95rem;
-		letter-spacing: 0.1em;
-		color: var(--ink-soft);
 		font-weight: 600;
+		letter-spacing: 0.14em;
+		color: var(--ink-soft);
+		white-space: nowrap;
+	}
+
+	.feed h2::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: linear-gradient(to right, var(--line), transparent);
 	}
 
 	.feed ul {
 		list-style: none;
 		margin: 0;
-		padding: 0;
-		max-height: 58vh;
+		padding: 0 0 1.6rem;
+		max-height: 62vh;
 		overflow-y: auto;
-		scrollbar-width: thin;
+		/* 舊的往下淡出，不用硬切 */
+		mask-image: linear-gradient(to bottom, #000 82%, transparent 100%);
 	}
 
 	.feed li {
 		display: flex;
 		align-items: baseline;
-		gap: 0.5rem;
-		padding: 0.5rem 0;
-		border-bottom: 1px dashed var(--line);
-		font-size: 0.87rem;
-		line-height: 1.5;
+		gap: 0.55rem;
+		padding: 0.6rem 0;
+		border-bottom: 1px dashed var(--line-soft);
+		font-size: 0.865rem;
+		line-height: 1.6;
+		opacity: var(--dim);
 	}
 
 	.feed li:last-child {
 		border-bottom: none;
 	}
 
+	.bell {
+		flex-shrink: 0;
+		font-size: 0.95rem;
+	}
+
 	.text {
 		flex: 1;
+		color: var(--ink);
 	}
 
 	.when {
-		font-size: 0.72rem;
-		color: var(--ink-soft);
+		flex-shrink: 0;
+		font-size: 0.7rem;
+		color: var(--ink-faint);
 		white-space: nowrap;
 	}
 
 	.empty {
 		font-size: 0.85rem;
+		line-height: 1.95;
 		color: var(--ink-soft);
-		line-height: 1.8;
 	}
 
 	code {
-		background: #eee3ce;
+		font-size: 0.9em;
+		background: #ece0ca;
 		border-radius: 4px;
-		padding: 0 0.3em;
+		padding: 0.05em 0.35em;
 	}
 
-	footer {
-		margin-top: 2.6rem;
-		text-align: center;
-		font-size: 0.76rem;
-		color: var(--ink-soft);
-		opacity: 0.85;
-	}
+	/* ── RWD ── */
+	@media (max-width: 820px) {
+		.page {
+			padding-top: 2.2rem;
+		}
 
-	@media (max-width: 780px) {
 		main {
 			grid-template-columns: 1fr;
+			gap: 2rem;
+		}
+
+		.br-m {
+			display: inline;
 		}
 
 		.feed {
+			min-height: 0; /* 手機上不需要為了對齊左欄而留高 */
 			max-height: none;
 		}
 
 		.feed ul {
-			max-height: 44vh;
+			max-height: 46vh;
+		}
+
+		/* 手機上把木槌收斂一點，別頂到螢幕邊 */
+		.fish-wrap {
+			width: min(300px, 72vw);
+		}
+
+		.mallet {
+			right: -8%;
+			width: 30%;
+		}
+	}
+
+	@media (max-width: 400px) {
+		.sins {
+			grid-template-columns: 1fr;
 		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.floater,
+		.ripple,
 		.ask.hint {
 			animation: none;
+		}
+
+		.fish-art,
+		.mallet {
+			transition: none;
 		}
 	}
 </style>
