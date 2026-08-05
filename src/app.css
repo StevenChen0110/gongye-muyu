@@ -1,26 +1,27 @@
 :root {
-	/* 紙 —— 宣紙 / 米色 */
-	--paper: #f7f1e5;
-	--paper-warm: #f2e9d8;
-	--paper-card: rgba(255, 253, 248, 0.62);
+	/* 宣紙 */
+	--paper: #f4eee0;
+	--paper-card: rgba(255, 252, 246, 0.6);
 
-	/* 墨 */
-	--ink: #453b2f;
-	--ink-soft: #8b7c68;
-	--ink-faint: #b3a591;
+	/* 墨——偏暖的近黑，不是中性灰 */
+	--ink: #3e362c;
+	--ink-soft: #857763;
+	--ink-faint: #ab9d88;
 
-	/* 木 */
-	--wood-light: #dcab79;
-	--wood: #b47d50;
-	--wood-deep: #8b5c37;
-	--wood-slit: #4c2f1a;
+	/* 檀木 */
+	--sandal-light: #d9a877;
+	--sandal: #b07c4e;
+	--sandal-deep: #6e482a;
 
-	/* 蒲團 */
-	--cushion: #d0a06f;
-	--cushion-deep: #b8834f;
+	/* 蒲團——全頁唯一的重色 */
+	--saffron: #c8873c;
 
-	--line: #e4d8c2;
-	--line-soft: #ece2d0;
+	/* 青瓷：即時 feed 的專屬聲音，把「共業」和「木頭」分開 */
+	--celadon: #7c8f7b;
+	--celadon-soft: #dfe4dc;
+
+	--line: #e2d6c0;
+	--line-soft: #ebe1cf;
 
 	--radius: 20px;
 	--shadow-soft: 0 2px 14px rgba(94, 74, 48, 0.06);

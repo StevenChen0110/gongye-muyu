@@ -4,8 +4,8 @@
 	import { flip } from 'svelte/animate';
 	import { SINS, sinEmoji, sinLabel } from '$lib/sins';
 	import { playWoodenFish, unlockAudio, setMasterVolume, PRESETS } from '$lib/woodenFish';
-	import WoodenFishArt from '$lib/WoodenFishArt.svelte';
-	import MalletArt from '$lib/MalletArt.svelte';
+	import WoodCanvas from '$lib/WoodCanvas.svelte';
+	import { drawWoodenFish, drawMallet, VW, VH } from '$lib/wood';
 	import {
 		fetchRecentKnocks,
 		fetchTotalCount,
@@ -190,7 +190,7 @@
 <div class="page">
 	<header>
 		<h1>共業木魚</h1>
-		<div class="rule" aria-hidden="true"><i></i>🪷<i></i></div>
+		<div class="rule" aria-hidden="true"></div>
 		<p class="sub">敲一下，替自己的口業積點功德。<br class="br-m" />原來大家都一樣。</p>
 	</header>
 
@@ -224,8 +224,12 @@
 					aria-label="敲木魚"
 					title="敲我（或按空白鍵）"
 				>
-					<span class="fish-art"><WoodenFishArt /></span>
-					<span class="mallet" aria-hidden="true"><MalletArt /></span>
+					<span class="fish-art">
+						<WoodCanvas draw={drawWoodenFish} vw={VW} vh={VH} label="木魚" />
+					</span>
+					<span class="mallet" aria-hidden="true">
+						<WoodCanvas draw={drawMallet} vw={120} vh={200} />
+					</span>
 				</button>
 			</div>
 
@@ -341,25 +345,14 @@
 		color: var(--ink);
 	}
 
+	/* 一道刻線，取代原本的裝飾性 emoji */
 	.rule {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.7rem;
-		margin: 0.9rem 0 0.8rem;
-		font-size: 0.8rem;
-		opacity: 0.75;
-	}
-
-	.rule i {
-		display: block;
-		width: clamp(40px, 12vw, 78px);
-		height: 1px;
-		background: linear-gradient(to var(--dir, right), transparent, var(--line));
-	}
-
-	.rule i:last-child {
-		--dir: left;
+		width: clamp(72px, 18vw, 132px);
+		height: 2px;
+		margin: 1.1rem auto 1rem;
+		border-radius: 2px;
+		background: linear-gradient(to right, transparent, var(--sandal) 45%, transparent);
+		opacity: 0.5;
 	}
 
 	.sub {
@@ -397,9 +390,10 @@
 
 	.counter strong {
 		font-family: var(--serif);
-		color: var(--wood-deep);
+		color: var(--sandal-deep);
 		font-size: 1.1rem;
 		letter-spacing: 0.03em;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.dim {
@@ -444,7 +438,7 @@
 		transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.5);
 	}
 
-	.fish-art :global(svg) {
+	.fish-art :global(canvas) {
 		display: block;
 		width: 100%;
 		height: auto;
@@ -468,7 +462,7 @@
 		filter: drop-shadow(0 6px 10px rgba(110, 76, 42, 0.22));
 	}
 
-	.mallet :global(svg) {
+	.mallet :global(canvas) {
 		display: block;
 		width: 100%;
 		height: auto;
@@ -493,7 +487,7 @@
 		position: absolute;
 		width: 62%;
 		aspect-ratio: 1;
-		border: 1.5px solid var(--wood);
+		border: 1.5px solid var(--sandal);
 		border-radius: 50%;
 		opacity: 0;
 		animation: ripple 0.9s cubic-bezier(0.2, 0.7, 0.35, 1) forwards;
@@ -518,7 +512,7 @@
 		font-family: var(--serif);
 		font-size: 1.1rem;
 		font-weight: 600;
-		color: var(--wood-deep);
+		color: var(--sandal-deep);
 		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
 		white-space: nowrap;
 		pointer-events: none;
@@ -550,16 +544,17 @@
 	.merit strong {
 		font-family: var(--serif);
 		font-size: 1.15rem;
-		color: var(--wood-deep);
+		color: var(--sandal-deep);
 		margin-left: 0.15em;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.blessing {
 		margin: 0.7rem 0 0;
 		font-size: 0.84rem;
-		color: var(--wood-deep);
+		color: var(--sandal-deep);
 		background: #f4e3cb;
-		border: 1px solid var(--wood-light);
+		border: 1px solid var(--sandal-light);
 		border-radius: 999px;
 		padding: 0.4rem 1rem;
 	}
@@ -579,7 +574,7 @@
 	}
 
 	.ask.hint {
-		color: var(--wood-deep);
+		color: var(--sandal-deep);
 		animation: nudge 0.55s ease;
 	}
 
@@ -619,13 +614,13 @@
 
 	.sin:hover {
 		transform: translateY(-2px);
-		border-color: var(--wood-light);
+		border-color: var(--sandal-light);
 		box-shadow: var(--shadow-lift);
 	}
 
 	.sin.active {
 		background: linear-gradient(#f6e5cd, #efd9ba);
-		border-color: var(--wood);
+		border-color: var(--sandal);
 	}
 
 	.emoji {
@@ -637,7 +632,7 @@
 		align-items: center;
 		gap: 0.6rem;
 		background: linear-gradient(#f6e5cd, #f0dcc0);
-		border: 1px solid var(--wood-light);
+		border: 1px solid var(--sandal-light);
 		border-radius: 999px;
 		padding: 0.55rem 0.65rem 0.55rem 0.55rem;
 		box-shadow: var(--shadow-soft);
@@ -652,7 +647,7 @@
 		font-size: 0.68rem;
 		letter-spacing: 0.06em;
 		color: #fffdf8;
-		background: var(--wood);
+		background: var(--saffron);
 		border-radius: 999px;
 		padding: 0.2rem 0.55rem;
 	}
@@ -660,7 +655,7 @@
 	.cur-label {
 		font-size: 0.92rem;
 		font-weight: 600;
-		color: var(--wood-deep);
+		color: var(--sandal-deep);
 	}
 
 	.change {
@@ -697,7 +692,7 @@
 	}
 
 	.mute:hover {
-		border-color: var(--wood-light);
+		border-color: var(--sandal-light);
 	}
 
 	.tones {
@@ -720,11 +715,11 @@
 	}
 
 	.tone:hover {
-		color: var(--wood-deep);
+		color: var(--sandal-deep);
 	}
 
 	.tone.active {
-		background: var(--wood);
+		background: var(--saffron);
 		color: #fffdf8;
 	}
 
@@ -755,11 +750,32 @@
 		white-space: nowrap;
 	}
 
+	.feed h2::before {
+		content: '';
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--celadon);
+		flex-shrink: 0;
+		/* 有連上 realtime 時輕輕呼吸，代表「這是活的」 */
+		animation: pulse 2.8s ease-in-out infinite;
+	}
+
 	.feed h2::after {
 		content: '';
 		flex: 1;
 		height: 1px;
 		background: linear-gradient(to right, var(--line), transparent);
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.35;
+		}
+		50% {
+			opacity: 1;
+		}
 	}
 
 	.feed ul {
@@ -861,7 +877,8 @@
 	@media (prefers-reduced-motion: reduce) {
 		.floater,
 		.ripple,
-		.ask.hint {
+		.ask.hint,
+		.feed h2::before {
 			animation: none;
 		}
 
