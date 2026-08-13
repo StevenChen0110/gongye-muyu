@@ -34,7 +34,9 @@
 		draw(ctx);
 	}
 
+	// 依賴 draw：換木材時 draw 會是新的 closure，這裡就會重繪
 	$effect(() => {
+		draw;
 		if (!canvas) return;
 		render();
 		const ro = new ResizeObserver(render);
