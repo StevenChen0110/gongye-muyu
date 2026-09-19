@@ -28,22 +28,38 @@
 
 	let lastAt = 0;
 	let seq = 0;
+	let animSeq = 0;
 
 	// 換木材時 palette 變，這個 closure 也變，WoodCanvas 就會重繪
 	const drawFish = $derived((ctx: CanvasRenderingContext2D) => drawWoodenFish(ctx, fish.palette));
 
-	export function strike() {
-		const t = performance.now();
-		if (t - lastAt < COOLDOWN_MS) return;
-		lastAt = t;
-
+	/**
+	 * 只發聲，不動畫、不計數。
+	 *
+	 * `when` 是 AudioContext 的絕對時間，給節拍器預先排程用；省略就是立刻。
+	 */
+	export function playAt(when = 0) {
 		unlockAudio();
-		playWoodenFish(fish.sound);
+		playWoodenFish(fish.sound, when);
+	}
+
+	/**
+	 * 只播動畫與震動，不發聲。
+	 *
+	 * 自動敲時聲音早就排程出去了，動畫要等到「真的聽得到」的那一刻才由節拍器
+	 * 回頭呼叫這裡，否則畫面會早於聲音。
+	 */
+	export function animate() {
 		buzz(fish.vibrate, haptics);
 
+		// 用遞增 token 保護：高 BPM 時第 N 拍的 timeout 會把第 N+1 拍剛設好的
+		// flag 清掉，動畫就卡住不動了
+		const my = ++animSeq;
 		striking = false;
 		requestAnimationFrame(() => (striking = true));
-		setTimeout(() => (striking = false), 260);
+		setTimeout(() => {
+			if (animSeq === my) striking = false;
+		}, 260);
 
 		const id = ++seq;
 		floaters = [...floaters, { id, dx: Math.random() * 56 - 28, rot: Math.random() * 14 - 7 }];
@@ -51,7 +67,21 @@
 
 		ripples = [...ripples, id];
 		setTimeout(() => (ripples = ripples.filter((r) => r !== id)), 900);
+	}
 
+	/** 發聲 + 動畫，但不經過 rate limit、也不回報 onKnock。 */
+	export function knockNow() {
+		playAt();
+		animate();
+	}
+
+	/** 使用者點擊／空白鍵的入口。有 rate limit，會回報 onKnock。 */
+	export function strike() {
+		const t = performance.now();
+		if (t - lastAt < COOLDOWN_MS) return;
+		lastAt = t;
+
+		knockNow();
 		onKnock();
 	}
 </script>

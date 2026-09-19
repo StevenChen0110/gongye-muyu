@@ -120,6 +120,10 @@ export const PRESETS: Record<string, Partial<WoodenFishOptions>> = {
 
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
+/** 木魚。靜音開關只動這條。 */
+let fishGain: GainNode | null = null;
+/** 背景音／環境音。之後的 ambient 模組接這裡。 */
+let ambientGain: GainNode | null = null;
 let noiseBuffer: AudioBuffer | null = null;
 
 /** 取得（或初始化）共用的 AudioContext。必須在使用者互動時呼叫，iOS 才會解鎖。 */
@@ -129,9 +133,19 @@ function getContext(): AudioContext | null {
 		const AC = window.AudioContext ?? (window as any).webkitAudioContext;
 		if (!AC) return null;
 		ctx = new AC();
+
+		// 兩條獨立的 bus，這樣「靜音木魚」不會連背景音一起關掉
 		masterGain = ctx.createGain();
 		masterGain.gain.value = 1;
 		masterGain.connect(ctx.destination);
+
+		fishGain = ctx.createGain();
+		fishGain.gain.value = 1;
+		fishGain.connect(masterGain);
+
+		ambientGain = ctx.createGain();
+		ambientGain.gain.value = 1;
+		ambientGain.connect(masterGain);
 	}
 	// 手機瀏覽器常常把 context 掛在 suspended，敲之前叫醒它
 	if (ctx.state === 'suspended') void ctx.resume();
@@ -141,6 +155,28 @@ function getContext(): AudioContext | null {
 /** 在第一次使用者互動時呼叫，先把 audio 解鎖，第一敲才不會沒聲音。 */
 export function unlockAudio(): void {
 	getContext();
+}
+
+/**
+ * AudioContext 的時鐘（秒）。沒有 context 時回 0。
+ *
+ * 節拍器要靠這個排程——`performance.now()` 跟音訊硬體不同步，用它排出來的
+ * 節奏會漂移。
+ */
+export function audioNow(): number {
+	return ctx?.currentTime ?? 0;
+}
+
+/**
+ * 從訊號進入音訊圖到真的從喇叭出來之間的延遲（秒）。
+ *
+ * 藍牙耳機可以差到 150–300ms。動畫要對準「聽到的那一刻」就得扣掉它，
+ * 否則畫面會明顯早於聲音。Safari 沒有 outputLatency，退回 baseLatency。
+ */
+export function outputLatency(): number {
+	if (!ctx) return 0;
+	const c = ctx as AudioContext & { outputLatency?: number };
+	return c.outputLatency ?? c.baseLatency ?? 0;
 }
 
 function getNoiseBuffer(audio: AudioContext): AudioBuffer {
@@ -187,13 +223,17 @@ function noiseBurst(
  * 敲一下木魚。可傳入部分參數覆寫預設值：
  *   playWoodenFish({ frequency: 200, malletLevel: 0.6 })
  *   playWoodenFish(PRESETS.temple)
+ *
+ * `when` 是 AudioContext 的絕對時間（秒），給節拍器預先排程用；0 代表立刻。
+ * 排程器落後時 `when` 可能已經過去，clamp 成 currentTime——對過去的時間做
+ * exponentialRampToValueAtTime 會爆音或整個沒聲音。
  */
-export function playWoodenFish(overrides: Partial<WoodenFishOptions> = {}): void {
+export function playWoodenFish(overrides: Partial<WoodenFishOptions> = {}, when = 0): void {
 	const audio = getContext();
-	if (!audio || !masterGain) return;
+	if (!audio || !fishGain) return;
 
 	const o: WoodenFishOptions = { ...DEFAULT_OPTIONS, ...overrides };
-	const now = audio.currentTime;
+	const now = when > 0 ? Math.max(when, audio.currentTime) : audio.currentTime;
 	const jitter = 1 + (Math.random() * 2 - 1) * o.humanize;
 	const f0 = Math.max(20, o.frequency * jitter);
 	const vel = 1 - Math.random() * o.humanize * 2; // 力道也抖一下
@@ -211,7 +251,7 @@ export function playWoodenFish(overrides: Partial<WoodenFishOptions> = {}): void
 	const out = audio.createGain();
 	out.gain.value = o.volume * vel;
 
-	out.connect(lp).connect(hp).connect(masterGain);
+	out.connect(lp).connect(hp).connect(fishGain);
 
 	// ── 2. 模態：非諧波正弦，高頻的先死 ──
 	const total = o.modeGains.reduce((a, b) => a + b, 0) || 1;
@@ -251,7 +291,47 @@ export function playWoodenFish(overrides: Partial<WoodenFishOptions> = {}): void
 	}
 }
 
-/** 靜音開關（0–1）。 */
-export function setMasterVolume(value: number): void {
-	if (masterGain) masterGain.gain.value = Math.max(0, Math.min(1, value));
+/**
+ * 音量一律用 setTargetAtTime 而不是直接寫 .value——在殘響還沒結束時瞬間改
+ * gain 會有 click 聲。15ms 的時間常數聽起來仍然是即時的。
+ */
+function rampTo(node: GainNode | null, value: number): void {
+	if (!node) return;
+	const v = Math.max(0, Math.min(1, value));
+	if (ctx) node.gain.setTargetAtTime(v, ctx.currentTime, 0.015);
+	else node.gain.value = v;
+}
+
+/** 木魚音量（0–1）。靜音開關就是傳 0。 */
+export function setFishVolume(value: number): void {
+	rampTo(fishGain, value);
+}
+
+/** 背景音音量（0–1）。 */
+export function setAmbientVolume(value: number): void {
+	rampTo(ambientGain, value);
+}
+
+/** 背景音要接的節點。ambient 模組用。 */
+export function getAmbientBus(): GainNode | null {
+	getContext();
+	return ambientGain;
+}
+
+/** 共用的 AudioContext。ambient 模組要自己建節點，所以需要它。 */
+export function getAudioContext(): AudioContext | null {
+	return getContext();
+}
+
+/**
+ * 立刻切斷木魚的聲音，連已經排程出去的也一起壓掉。
+ *
+ * playWoodenFish 不回傳 handle，音一旦排出去就一定會響；停止自動敲時
+ * 把整條 bus 拉到 0 是唯一能攔住它們的辦法。之後恢復音量由呼叫端負責。
+ */
+export function cutFish(): void {
+	if (fishGain && ctx) {
+		fishGain.gain.cancelScheduledValues(ctx.currentTime);
+		fishGain.gain.setValueAtTime(0, ctx.currentTime);
+	}
 }

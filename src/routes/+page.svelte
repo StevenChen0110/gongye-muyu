@@ -12,10 +12,14 @@
 		removeCustomSin,
 		sinEmoji,
 		sinLabel,
+		CUSTOM_PREFIX,
 		type Sin
 	} from '$lib/sins';
 	import { fishFromId, DEFAULT_FISH_ID } from '$lib/fish';
-	import { setMasterVolume } from '$lib/woodenFish';
+	import { setFishVolume, setAmbientVolume, cutFish } from '$lib/woodenFish';
+	import { createMetronome, clampBpm, beatsForMinutes, type Metronome } from '$lib/metronome';
+	import { setAmbient, type AmbientId } from '$lib/ambient';
+	import { createKnockBuffer, type KnockBuffer } from '$lib/knockBuffer';
 	import * as haptics from '$lib/haptics';
 	import {
 		getIdentity,
@@ -28,6 +32,8 @@
 	import { EMPTY_STATS, evaluate, type Stats } from '$lib/achievements';
 	import Knocker from '$lib/Knocker.svelte';
 	import FishPicker from '$lib/FishPicker.svelte';
+	import AutoControls from '$lib/AutoControls.svelte';
+	import RitualPanel from '$lib/RitualPanel.svelte';
 	import Sidebar from '$lib/Sidebar.svelte';
 	import AuthPanel from '$lib/AuthPanel.svelte';
 	import {
@@ -53,6 +59,8 @@
 	const MILESTONE = 108; // 百八煩惱
 
 	type Mode = 'solo' | 'me' | 'group' | 'community';
+	/** 木魚由誰驅動。共用同一顆木魚、同一組音量與功德計數。 */
+	type Driver = 'manual' | 'auto' | 'ritual';
 
 	const PHRASES = [
 		(s: string) => `有人剛剛懺悔了「${s}」`,
@@ -81,6 +89,34 @@
 	let pickerOpen = $state(false);
 	let hintPicker = $state(false);
 	let blessing = $state(false);
+
+	// 自動敲。手動/自動是同一個畫面的兩種驅動方式，不是兩個分頁。
+	let driver = $state<Driver>('manual');
+	let bpm = $state(60);
+	let autoMinutes = $state(5);
+	let autoRunning = $state(false);
+	let autoKnocked = $state(0);
+	let autoRemaining = $state(0);
+	const DRIVERS: { id: Driver; label: string; desc: string }[] = [
+		{ id: 'manual', label: '自己敲', desc: '一下一下自己來' },
+		{ id: 'auto', label: '自動敲', desc: '設好節奏，木魚自己敲' },
+		{ id: 'ritual', label: '超度', desc: '寫下一件事，敲掉它' }
+	];
+	const driverIdx = $derived(DRIVERS.findIndex((d) => d.id === driver));
+
+	// 超度
+	let ritualText = $state('');
+	let ritualMinutes = $state(3);
+	let ritualDone = $state(false);
+
+	let slowDown = $state(false);
+	let ambient = $state<AmbientId>('none');
+	let ambientVol = $state(0.6);
+	let metro: Metronome | null = null;
+	let autoTimer: ReturnType<typeof setInterval> | null = null;
+	let autoEndsAt = 0;
+	/** 自動敲的批次寫入。超度不走這條——它只在完成時寫一筆。 */
+	let buffer: KnockBuffer | null = null;
 
 	// 自訂懺悔內容
 	let customSins = $state<Sin[]>([]);
@@ -143,9 +179,16 @@
 		muted = localStorage.getItem('muyu:muted') === '1';
 		customSins = loadCustomSins();
 		controlsOpen = localStorage.getItem('muyu:controls-open') === '1';
+		bpm = clampBpm(Number(localStorage.getItem('muyu:bpm') ?? 60));
+		autoMinutes = Number(localStorage.getItem('muyu:auto-minutes') ?? 5) || 5;
+		driver = localStorage.getItem('muyu:driver') === 'auto' ? 'auto' : 'manual';
+		slowDown = localStorage.getItem('muyu:slow-down') === '1';
+		ritualMinutes = Number(localStorage.getItem('muyu:ritual-minutes') ?? 3) || 3;
+		ambient = (localStorage.getItem('muyu:ambient') as AmbientId | null) ?? 'none';
+		ambientVol = Number(localStorage.getItem('muyu:ambient-vol') ?? 0.6);
 		hapticsOn = haptics.isEnabled();
 		hapticsSupported = haptics.isSupported();
-		setMasterVolume(muted ? 0 : 1);
+		setFishVolume(muted ? 0 : 1);
 
 		void ensureUser();
 
@@ -171,6 +214,8 @@
 			unsubscribe?.();
 			stopAuth();
 			clearInterval(clock);
+			stopAuto(); // 離開頁面時別讓節拍器繼續跑
+			setAmbient('none');
 		};
 	});
 
@@ -226,8 +271,9 @@
 		if (counted.has(k.id)) return false;
 		counted.add(k.id);
 		feed = [k, ...feed].slice(0, FEED_MAX);
-		if (groupId) groupKnocks += 1;
-		else total += 1;
+		// 一筆可能代表好幾十下
+		if (groupId) groupKnocks += k.count;
+		else total += k.count;
 		return true;
 	}
 
@@ -265,6 +311,200 @@
 	async function confess(sin: string) {
 		const row = await insertKnock({ sin, fish: fishId });
 		if (row) pushToFeed(row);
+	}
+
+	// ── 自動敲 ────────────────────────────────────────
+	function setBpm(v: number) {
+		bpm = clampBpm(v);
+		localStorage.setItem('muyu:bpm', String(bpm));
+		metro?.setBpm(bpm); // 跑到一半改速度不會打斷節奏
+	}
+
+	function setAutoMinutes(v: number) {
+		autoMinutes = v;
+		localStorage.setItem('muyu:auto-minutes', String(v));
+		if (autoRunning) stopAuto(); // 改時間就重來，不然倒數會對不上
+	}
+
+	function setSlowDown(v: boolean) {
+		slowDown = v;
+		localStorage.setItem('muyu:slow-down', v ? '1' : '0');
+		if (autoRunning) stopAuto(); // 斜率會變，重來比較單純
+	}
+
+	/**
+	 * 選背景音。
+	 *
+	 * `ambient` 是「使用者選了什麼」，跟「現在有沒有在播」是兩回事——
+	 * 沒在自動敲的時候先試聽，按開始才正式跟著跑。
+	 */
+	function pickAmbient(id: AmbientId) {
+		ambient = id;
+		localStorage.setItem('muyu:ambient', id);
+		setAmbientVolume(ambientVol);
+		setAmbient(id); // 選了就先試聽，不用等按開始
+	}
+
+	function setAmbientVol(v: number) {
+		ambientVol = v;
+		localStorage.setItem('muyu:ambient-vol', String(v));
+		setAmbientVolume(v);
+	}
+
+	/** 漸慢的終點速度：原速的一半，但不低於下限。 */
+	const slowTarget = $derived(Math.max(30, Math.round(bpm / 2)));
+
+	function toggleAuto() {
+		if (autoRunning) stopAuto();
+		else startAuto();
+	}
+
+	/**
+	 * 啟動節拍器。自動敲與超度共用——差別只在時長與結束時做什麼。
+	 */
+	function runMetronome(minutes: number, onDone: () => void) {
+		// 上一輪停止時把 bus 拉到 0 壓掉殘餘的排程音，這裡要放回來
+		setFishVolume(muted ? 0 : 1);
+		if (ambient !== 'none') {
+			setAmbientVolume(ambientVol);
+			setAmbient(ambient);
+		}
+
+		autoKnocked = 0;
+		autoRemaining = minutes * 60;
+		autoEndsAt = Date.now() + minutes * 60_000;
+
+		metro = createMetronome({
+			bpm,
+			limit: beatsForMinutes(minutes, bpm, slowDown ? slowTarget : undefined),
+			slowTo: slowDown ? slowTarget : undefined,
+			// 計數掛在排程這條路：聲音一定會響，但 onAudible 是 rAF 驅動的，
+			// 分頁切到背景會被節流，掛在那裡會變成「有敲到卻沒算到」
+			onSchedule: (t) => {
+				knocker?.playAt(t.at);
+				autoKnocked += 1;
+				merit += 1;
+				total += 1; // 自動敲也算進「大家一共」
+				localStorage.setItem('muyu:merit', String(merit));
+				// 只有自動敲會掛 buffer；超度不走這條，它在完成時寫一筆。
+				// realtime 會濾掉非 manual 的回音，所以這裡不會重複計數。
+				buffer?.add(1);
+			},
+			onAudible: () => knocker?.animate(),
+			onComplete: onDone
+		});
+		metro.start();
+		autoRunning = true;
+
+		// 倒數只是顯示用，用牆鐘時間算就夠了
+		autoTimer = setInterval(() => {
+			autoRemaining = Math.max(0, Math.round((autoEndsAt - Date.now()) / 1000));
+		}, 250);
+	}
+
+	function startAuto() {
+		if (autoRunning) return;
+		// 自動敲要批次寫 DB；超度不掛，它只在完成時寫一筆
+		buffer = createKnockBuffer({
+			write: (count) => insertKnock({ fish: fishId, count, source: 'auto' }),
+			// 不推進 feed：自動敲的紀錄不該出現在「大家的懺悔」那面牆上。
+			// 功德與總數在 onSchedule 就即時加過了，這裡只負責寫 DB。
+			onWritten: () => {}
+		});
+		runMetronome(autoMinutes, stopAuto);
+	}
+
+	// ── 超度 ──────────────────────────────────────────
+	function setRitualText(v: string) {
+		ritualText = v;
+	}
+
+	function setRitualMinutes(v: number) {
+		ritualMinutes = v;
+		localStorage.setItem('muyu:ritual-minutes', String(v));
+		if (autoRunning) stopAuto();
+	}
+
+	function toggleRitual() {
+		if (autoRunning) {
+			stopAuto();
+			return;
+		}
+		if (!ritualText.trim()) return;
+		ritualDone = false;
+		runMetronome(ritualMinutes, finishRitual);
+	}
+
+	/** 敲完了。寫一筆 source='ritual'，然後播儀式。 */
+	function finishRitual() {
+		const knocks = autoKnocked;
+		const target = ritualText.trim();
+		stopAuto();
+		autoKnocked = knocks; // stopAuto 會扣掉沒響到的，這裡保留給儀式顯示
+		ritualDone = true;
+
+		// 超度是原子的：半途而廢不該留紀錄，所以只在完成時寫一筆
+		if (target) {
+			void insertKnock({
+				sin: CUSTOM_PREFIX + target,
+				fish: fishId,
+				count: knocks,
+				source: 'ritual'
+			});
+		}
+	}
+
+	function dismissRitual() {
+		ritualDone = false;
+		ritualText = '';
+	}
+
+	function stopAuto() {
+		// 先停再讀 unheard——stop() 會把 pending 的數量留在那裡
+		metro?.stop();
+		const metroUnheard = metro?.unheard ?? 0;
+		metro = null;
+		if (autoTimer !== null) clearInterval(autoTimer);
+		autoTimer = null;
+		autoRunning = false;
+		autoRemaining = 0;
+
+		// 已經排程出去的音攔不掉，只能把整條 bus 壓掉。那些被壓掉的拍在排程時
+		// 已經計過功德，要扣回來——不然會有「聽不到卻算到」的功德。
+		// 這段必須在 flush 之前，不然那些拍會被寫進 DB。
+		if (metroUnheard > 0) {
+			autoKnocked = Math.max(0, autoKnocked - metroUnheard);
+			merit = Math.max(0, merit - metroUnheard);
+			total = Math.max(0, total - metroUnheard);
+			localStorage.setItem('muyu:merit', String(merit));
+			buffer?.add(-metroUnheard);
+		}
+
+		// 扣完帳才把剩下的寫出去
+		if (buffer) {
+			void buffer.flush();
+			buffer.dispose();
+			buffer = null;
+		}
+
+		cutFish();
+		setTimeout(() => setFishVolume(muted ? 0 : 1), 250);
+
+		// 背景音跟著這一輪結束，不要讓它在停止後繼續播
+		setAmbient('none');
+	}
+
+	function switchDriver(d: Driver) {
+		if (d === driver) return;
+		if (autoRunning) stopAuto();
+		// 只有自動敲與超度有背景音，手動模式不該有雨聲
+		if (d === 'manual') setAmbient('none');
+		else if (ambient !== 'none') {
+			setAmbientVolume(ambientVol);
+			setAmbient(ambient);
+		}
+		driver = d;
+		localStorage.setItem('muyu:driver', d);
 	}
 
 	function selectSin(id: string) {
@@ -440,7 +680,7 @@
 	function toggleMute() {
 		muted = !muted;
 		localStorage.setItem('muyu:muted', muted ? '1' : '0');
-		setMasterVolume(muted ? 0 : 1);
+		setFishVolume(muted ? 0 : 1);
 	}
 
 	function toggleHaptics() {
@@ -458,7 +698,9 @@
 	}
 
 	function phraseFor(k: Knock): string {
-		return k.sin ? PHRASES[k.id % PHRASES.length](sinLabel(k.sin)) : '有人敲了一下';
+		if (k.sin) return PHRASES[k.id % PHRASES.length](sinLabel(k.sin));
+		// 一筆可能代表批次的好幾十下
+		return k.count > 1 ? `有人一口氣敲了 ${k.count.toLocaleString('en-US')} 下` : '有人敲了一下';
 	}
 
 	function timeAgo(iso: string): string {
@@ -720,6 +962,22 @@
 							</div>
 						{/if}
 
+						{#if mode === 'solo'}
+							<!-- 三種驅動共用下面那顆木魚，差別只在誰敲、敲完做什麼 -->
+							<div class="drivers" style="--i: {driverIdx}">
+								<span class="d-thumb" aria-hidden="true"></span>
+								{#each DRIVERS as d (d.id)}
+									<button
+										class="d-opt"
+										class:active={driver === d.id}
+										onclick={() => switchDriver(d.id)}
+										aria-pressed={driver === d.id}
+										title={d.desc}>{d.label}</button
+									>
+								{/each}
+							</div>
+						{/if}
+
 						<Knocker
 							bind:this={knocker}
 							{fish}
@@ -727,7 +985,41 @@
 							onKnock={mode === 'solo' ? onSoloKnock : onGroupKnock}
 						/>
 
-						{#if mode === 'solo'}
+						{#if mode === 'solo' && driver === 'auto'}
+							<AutoControls
+								{bpm}
+								minutes={autoMinutes}
+								running={autoRunning}
+								remaining={autoRemaining}
+								knocked={autoKnocked}
+								{slowDown}
+								{ambient}
+								{ambientVol}
+								onBpm={setBpm}
+								onMinutes={setAutoMinutes}
+								onToggle={toggleAuto}
+								onSlowDown={setSlowDown}
+								onAmbient={pickAmbient}
+								onAmbientVol={setAmbientVol}
+							/>
+						{/if}
+
+						{#if mode === 'solo' && driver === 'ritual'}
+							<RitualPanel
+								text={ritualText}
+								minutes={ritualMinutes}
+								running={autoRunning}
+								remaining={autoRemaining}
+								knocked={autoKnocked}
+								done={ritualDone}
+								onText={setRitualText}
+								onMinutes={setRitualMinutes}
+								onToggle={toggleRitual}
+								onDismiss={dismissRitual}
+							/>
+						{/if}
+
+						{#if mode === 'solo' && driver === 'manual'}
 							{#if blessing}
 								<p class="blessing" transition:fade={{ duration: 400 }}>
 									敲滿 {MILESTONE} 下，百八煩惱先放一邊 🙏
@@ -1014,6 +1306,50 @@
 		background: var(--saffron-soft);
 		border-radius: var(--r-full);
 		padding: 0.35rem 0.95rem;
+	}
+
+	/* ── 手動 / 自動 ── */
+	.drivers {
+		position: relative;
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		width: 100%;
+		max-width: 264px;
+		padding: 3px;
+		background: var(--surface-2);
+		border-radius: var(--r-full);
+	}
+
+	.d-thumb {
+		position: absolute;
+		top: 3px;
+		bottom: 3px;
+		left: 3px;
+		width: calc((100% - 6px) / 3);
+		background: var(--surface);
+		border-radius: var(--r-full);
+		box-shadow: var(--shadow-soft);
+		transform: translateX(calc(var(--i) * 100%));
+		transition: transform var(--slow);
+	}
+
+	.d-opt {
+		position: relative;
+		z-index: 1;
+		padding: 0.34rem 0.3rem;
+		font-size: 0.8rem;
+		color: var(--ink-soft);
+		border-radius: var(--r-full);
+		transition: color var(--fast);
+	}
+
+	.d-opt:hover {
+		color: var(--ink);
+	}
+
+	.d-opt.active {
+		color: var(--ink);
+		font-weight: 600;
 	}
 
 	/* ── 口業 ── */
