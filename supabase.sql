@@ -50,7 +50,7 @@ exception when duplicate_object then null;
 end $$;
 
 -- manual / auto / ritual。公開 feed 只看 manual——自動敲不該洗掉真人的懺悔，
--- 超度的內容比較私人，也不進 feed。
+-- 超渡的內容比較私人，也不進 feed。
 alter table knocks add column if not exists source text not null default 'manual';
 
 create index if not exists knocks_id_desc_idx on knocks (id desc);

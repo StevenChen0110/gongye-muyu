@@ -103,7 +103,7 @@ export async function fetchRecentKnocks(limit = 30, groupId: string | null = nul
 		.order('id', { ascending: false })
 		.limit(limit);
 	// 個人/公開 feed 只看沒有群組的敲擊，免得別人的群組內容外流；
-	// 而且只留手動懺悔——自動敲會洗版，超度的內容比較私人
+	// 而且只留手動懺悔——自動敲會洗版，超渡的內容比較私人
 	q = groupId ? q.eq('group_id', groupId) : q.is('group_id', null).eq('source', 'manual');
 
 	const { data, error } = await q;
@@ -194,7 +194,7 @@ export function subscribeToKnocks(
 			(payload) => {
 				const k = payload.new as Knock;
 				// 公開 feed 要自己濾掉別人群組的敲擊（realtime 無法 filter is null），
-				// 以及自動敲/超度的紀錄
+				// 以及自動敲/超渡的紀錄
 				if (!groupId && (k.group_id || k.source !== 'manual')) return;
 				onKnock(k);
 			}

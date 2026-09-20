@@ -24,10 +24,10 @@ export const CUSTOM_EMOJI = '✏️';
 export const CUSTOM_MAX_LEN = 12;
 
 /**
- * 超度模式輸入的那件事。
+ * 超渡模式輸入的那件事。
  *
  * 比 CUSTOM_MAX_LEN 寬，因為「想放下的一件事」寫 12 個字太擠。
- * 這類文字比較私人，所以超度的紀錄 source='ritual'，不會進公開 feed。
+ * 這類文字比較私人，所以超渡的紀錄 source='ritual'，不會進公開 feed。
  */
 export const RITUAL_MAX_LEN = 24;
 const CUSTOM_MAX_COUNT = 6;

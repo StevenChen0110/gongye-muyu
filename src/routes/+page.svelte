@@ -100,11 +100,11 @@
 	const DRIVERS: { id: Driver; label: string; desc: string }[] = [
 		{ id: 'manual', label: '自己敲', desc: '一下一下自己來' },
 		{ id: 'auto', label: '自動敲', desc: '設好節奏，木魚自己敲' },
-		{ id: 'ritual', label: '超度', desc: '寫下一件事，敲掉它' }
+		{ id: 'ritual', label: '超渡', desc: '寫下一件事，敲掉它' }
 	];
 	const driverIdx = $derived(DRIVERS.findIndex((d) => d.id === driver));
 
-	// 超度
+	// 超渡
 	let ritualText = $state('');
 	let ritualMinutes = $state(3);
 	let ritualDone = $state(false);
@@ -115,7 +115,7 @@
 	let metro: Metronome | null = null;
 	let autoTimer: ReturnType<typeof setInterval> | null = null;
 	let autoEndsAt = 0;
-	/** 自動敲的批次寫入。超度不走這條——它只在完成時寫一筆。 */
+	/** 自動敲的批次寫入。超渡不走這條——它只在完成時寫一筆。 */
 	let buffer: KnockBuffer | null = null;
 
 	// 自訂懺悔內容
@@ -400,7 +400,7 @@
 	}
 
 	/**
-	 * 啟動節拍器。自動敲與超度共用——差別只在時長與結束時做什麼。
+	 * 啟動節拍器。自動敲與超渡共用——差別只在時長與結束時做什麼。
 	 */
 	function runMetronome(minutes: number, onDone: () => void) {
 		// 上一輪停止時把 bus 拉到 0 壓掉殘餘的排程音，這裡要放回來
@@ -426,7 +426,7 @@
 				merit += 1;
 				total += 1; // 自動敲也算進「大家一共」
 				localStorage.setItem('muyu:merit', String(merit));
-				// 只有自動敲會掛 buffer；超度不走這條，它在完成時寫一筆。
+				// 只有自動敲會掛 buffer；超渡不走這條，它在完成時寫一筆。
 				// realtime 會濾掉非 manual 的回音，所以這裡不會重複計數。
 				buffer?.add(1);
 			},
@@ -444,7 +444,7 @@
 
 	function startAuto() {
 		if (autoRunning) return;
-		// 自動敲要批次寫 DB；超度不掛，它只在完成時寫一筆
+		// 自動敲要批次寫 DB；超渡不掛，它只在完成時寫一筆
 		buffer = createKnockBuffer({
 			write: (count) => insertKnock({ fish: fishId, count, source: 'auto' }),
 			// 不推進 feed：自動敲的紀錄不該出現在「大家的懺悔」那面牆上。
@@ -454,7 +454,7 @@
 		runMetronome(autoMinutes, stopAuto);
 	}
 
-	// ── 超度 ──────────────────────────────────────────
+	// ── 超渡 ──────────────────────────────────────────
 	function setRitualText(v: string) {
 		ritualText = v;
 	}
@@ -483,7 +483,7 @@
 		autoKnocked = knocks; // stopAuto 會扣掉沒響到的，這裡保留給儀式顯示
 		ritualDone = true;
 
-		// 超度是原子的：半途而廢不該留紀錄，所以只在完成時寫一筆
+		// 超渡是原子的：半途而廢不該留紀錄，所以只在完成時寫一筆
 		if (target) {
 			void insertKnock({
 				sin: CUSTOM_PREFIX + target,
@@ -537,7 +537,7 @@
 	function switchDriver(d: Driver) {
 		if (d === driver) return;
 		if (autoRunning) stopAuto();
-		// 只有自動敲與超度有背景音，手動模式不該有雨聲
+		// 只有自動敲與超渡有背景音，手動模式不該有雨聲
 		if (d === 'manual') setAmbient('none');
 		else if (ambient !== 'none') {
 			setAmbientVolume(ambientVol);

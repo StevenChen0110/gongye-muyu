@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * 超度。寫下一件想放下的事，設定時間，敲完它。
+	 * 超渡。寫下一件想放下的事，設定時間，敲完它。
 	 *
 	 * 跟自動敲共用同一套節拍器，差別在於：有一個對象、結束時有儀式。
 	 * 儀式本身（那件事消散）才是這個模式的重點，所以動畫放在這裡而不是
@@ -54,7 +54,7 @@
 			<button class="again" onclick={onDismiss}>再來一次</button>
 		</div>
 	{:else if running}
-		<p class="target" aria-live="polite">正在超度「{text}」</p>
+		<p class="target" aria-live="polite">正在超渡「{text}」</p>
 		<p class="status">
 			<span class="clock">{mmss}</span>
 			<span class="sep" aria-hidden="true">·</span>
@@ -68,7 +68,7 @@
 			先停下
 		</button>
 	{:else}
-		<label class="q" for="ritual-text">今天想超度什麼？</label>
+		<label class="q" for="ritual-text">今天想超渡什麼？</label>
 		<input
 			id="ritual-text"
 			class="target-input"
@@ -99,7 +99,7 @@
 
 		<button class="go" onclick={onToggle} disabled={!ready}>
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l13-7.5z" /></svg>
-			開始超度
+			開始超渡
 		</button>
 		<p class="hint">
 			{ready ? '敲完它，然後放下。' : '先寫下那件事。'}
