@@ -20,6 +20,7 @@
 	import { createMetronome, clampBpm, beatsForMinutes, type Metronome } from '$lib/metronome';
 	import { setAmbient, type AmbientId } from '$lib/ambient';
 	import { createKnockBuffer, type KnockBuffer } from '$lib/knockBuffer';
+	import { savePhoto, loadPhoto, clearPhoto, MAX_INPUT_BYTES } from '$lib/ritualPhoto';
 	import * as haptics from '$lib/haptics';
 	import {
 		getIdentity,
@@ -108,6 +109,9 @@
 	let ritualText = $state('');
 	let ritualMinutes = $state(3);
 	let ritualDone = $state(false);
+	/** 本機照片的 object URL。null = 沒放。影像本身不離開這台裝置。 */
+	let ritualPhoto = $state<string | null>(null);
+	let photoError = $state<string | null>(null);
 
 	let slowDown = $state(false);
 	let ambient = $state<AmbientId>('none');
@@ -184,6 +188,11 @@
 		driver = localStorage.getItem('muyu:driver') === 'auto' ? 'auto' : 'manual';
 		slowDown = localStorage.getItem('muyu:slow-down') === '1';
 		ritualMinutes = Number(localStorage.getItem('muyu:ritual-minutes') ?? 3) || 3;
+		// 選好照片才重整不該白選一次。儀式跑完會自動清掉，所以這裡撿回來的
+		// 只會是「還沒開始的那一張」
+		void loadPhoto().then((url) => {
+			if (url) ritualPhoto = url;
+		});
 		ambient = (localStorage.getItem('muyu:ambient') as AmbientId | null) ?? 'none';
 		ambientVol = Number(localStorage.getItem('muyu:ambient-vol') ?? 0.6);
 		hapticsOn = haptics.isEnabled();
@@ -459,6 +468,29 @@
 		ritualText = v;
 	}
 
+	/**
+	 * 放一張照片。只存在這台裝置，永遠不上傳。
+	 *
+	 * 伺服器連影像都拿不到，DB 只會多一個「這次有附圖」的布林值。理由見
+	 * ritualPhoto.ts——讓使用者放別人的臉的功能，照片一旦上雲就是另一種產品。
+	 */
+	async function setRitualPhoto(file: File) {
+		try {
+			if (ritualPhoto) URL.revokeObjectURL(ritualPhoto);
+			ritualPhoto = await savePhoto(file);
+		} catch (e) {
+			console.warn('[ritual] 照片存不進去：', e);
+			photoError = file.size > MAX_INPUT_BYTES ? '這張照片太大了' : '這張照片讀不進來';
+			setTimeout(() => (photoError = null), 2600);
+		}
+	}
+
+	function clearRitualPhoto() {
+		if (ritualPhoto) URL.revokeObjectURL(ritualPhoto);
+		ritualPhoto = null;
+		void clearPhoto();
+	}
+
 	function setRitualMinutes(v: number) {
 		ritualMinutes = v;
 		localStorage.setItem('muyu:ritual-minutes', String(v));
@@ -483,7 +515,8 @@
 		autoKnocked = knocks; // stopAuto 會扣掉沒響到的，這裡保留給儀式顯示
 		ritualDone = true;
 
-		// 超渡是原子的：半途而廢不該留紀錄，所以只在完成時寫一筆
+		// 超渡是原子的：半途而廢不該留紀錄，所以只在完成時寫一筆。
+		// 注意只寫文字，照片不在這裡——影像永遠不離開這台裝置。
 		if (target) {
 			void insertKnock({
 				sin: CUSTOM_PREFIX + target,
@@ -497,6 +530,8 @@
 	function dismissRitual() {
 		ritualDone = false;
 		ritualText = '';
+		// 儀式結束就把照片清掉：這是一次性的告別，不是在累積一份名單
+		clearRitualPhoto();
 	}
 
 	function stopAuto() {
@@ -1059,11 +1094,17 @@
 								remaining={autoRemaining}
 								knocked={autoKnocked}
 								done={ritualDone}
+								photo={ritualPhoto}
 								onText={setRitualText}
 								onMinutes={setRitualMinutes}
 								onToggle={toggleRitual}
 								onDismiss={dismissRitual}
+								onPhoto={setRitualPhoto}
+								onClearPhoto={clearRitualPhoto}
 							/>
+							{#if photoError}
+								<p class="photo-err" transition:fade={{ duration: 200 }}>{photoError}</p>
+							{/if}
 						{/if}
 
 						{#if mode === 'solo' && driver === 'manual'}
@@ -1344,6 +1385,13 @@
 		width: 1px;
 		height: 30px;
 		background: var(--line);
+	}
+
+	.photo-err {
+		margin: 0.4rem 0 0;
+		text-align: center;
+		font-size: 0.76rem;
+		color: var(--ink-faint);
 	}
 
 	.blessing {

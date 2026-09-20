@@ -8,6 +8,7 @@
 	 */
 	import { fade } from 'svelte/transition';
 	import { RITUAL_MAX_LEN } from './sins';
+	import { ACCEPT } from './ritualPhoto';
 
 	let {
 		text,
@@ -16,10 +17,13 @@
 		remaining,
 		knocked,
 		done,
+		photo,
 		onText,
 		onMinutes,
 		onToggle,
-		onDismiss
+		onDismiss,
+		onPhoto,
+		onClearPhoto
 	}: {
 		text: string;
 		minutes: number;
@@ -28,11 +32,24 @@
 		knocked: number;
 		/** 剛完成，正在播放儀式 */
 		done: boolean;
+		/** 本機照片的 object URL。null = 沒放。 */
+		photo: string | null;
 		onText: (v: string) => void;
 		onMinutes: (v: number) => void;
 		onToggle: () => void;
 		onDismiss: () => void;
+		onPhoto: (file: File) => void;
+		onClearPhoto: () => void;
 	} = $props();
+
+	let fileInput = $state<HTMLInputElement | null>(null);
+
+	function pick(e: Event) {
+		const f = (e.currentTarget as HTMLInputElement).files?.[0];
+		if (f) onPhoto(f);
+		// 清掉 value，不然選同一張檔案不會觸發 change
+		(e.currentTarget as HTMLInputElement).value = '';
+	}
 
 	const MINUTES = [1, 3, 5, 10];
 	const minuteIdx = $derived(MINUTES.indexOf(minutes));
@@ -47,13 +64,20 @@
 <div class="ritual">
 	{#if done}
 		<div class="ceremony" transition:fade={{ duration: 500 }}>
+			{#if photo}
+				<!-- 照片化成光散掉，不是被打碎。動作的對象是你的執念，不是照片裡的人 -->
+				<img class="gone-photo" src={photo} alt="" />
+			{/if}
 			<p class="gone">{text}</p>
-			<p class="verdict">功德圓滿。</p>
-			<p class="coda">今天先放過自己。</p>
+			<p class="verdict">放下了。</p>
+			<p class="coda">願他安好，願你自在。</p>
 			<p class="tally">敲了 {knocked.toLocaleString('en-US')} 下</p>
 			<button class="again" onclick={onDismiss}>再來一次</button>
 		</div>
 	{:else if running}
+		{#if photo}
+			<img class="running-photo" src={photo} alt="" />
+		{/if}
 		<p class="target" aria-live="polite">正在超渡「{text}」</p>
 		<p class="status">
 			<span class="clock">{mmss}</span>
@@ -68,18 +92,51 @@
 			先停下
 		</button>
 	{:else}
-		<label class="q" for="ritual-text">今天想超渡什麼？</label>
+		<label class="q" for="ritual-text">今天有什麼放不下？</label>
 		<input
 			id="ritual-text"
 			class="target-input"
 			value={text}
 			maxlength={RITUAL_MAX_LEN}
-			placeholder="那個討厭的同事、今天的破事…"
+			placeholder="一段關係、一件懊悔的事…"
 			oninput={(e) => onText(e.currentTarget.value)}
 			onkeydown={(e) => {
 				if (e.key === 'Enter' && ready) onToggle();
 			}}
 		/>
+
+		<!-- 照片是可選的。放的是「讓你放不下的那張照片」，不是「要對付的人」 -->
+		<input
+			bind:this={fileInput}
+			type="file"
+			accept={ACCEPT}
+			class="hidden-file"
+			onchange={pick}
+		/>
+		{#if photo}
+			<div class="photo-row">
+				<img class="thumb-img" src={photo} alt="你放上的照片" />
+				<div class="photo-meta">
+					<span class="photo-name">已放上一張照片</span>
+					<small>只存在這台裝置，儀式結束後會自動刪掉</small>
+				</div>
+				<button class="photo-x" onclick={onClearPhoto} aria-label="移除照片">✕</button>
+			</div>
+		{:else}
+			<button class="photo-add" onclick={() => fileInput?.click()}>
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path
+						d="M4 6h3l1.5-2h7L17 6h3v13H4z"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.6"
+						stroke-linejoin="round"
+					/>
+					<circle cx="12" cy="12.5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.6" />
+				</svg>
+				放一張照片（可不放）
+			</button>
+		{/if}
 
 		<div class="track" style="--n: {MINUTES.length}; --i: {minuteIdx}" role="group" aria-label="時間">
 			{#if hasMinute}
@@ -136,6 +193,93 @@
 	.target-input:focus {
 		outline: none;
 		border-color: var(--saffron);
+	}
+
+	/* ── 照片 ── */
+	.hidden-file {
+		display: none;
+	}
+
+	.photo-add {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		padding: 0.5rem;
+		font-size: 0.8rem;
+		color: var(--ink-soft);
+		background: var(--surface-2);
+		border: 1px dashed var(--line);
+		border-radius: var(--r-sm);
+		transition: color var(--fast);
+	}
+
+	.photo-add:hover {
+		color: var(--ink);
+	}
+
+	.photo-add svg {
+		width: 16px;
+		height: 16px;
+	}
+
+	.photo-row {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 0.45rem;
+		background: var(--surface-2);
+		border-radius: var(--r-sm);
+	}
+
+	.thumb-img {
+		width: 44px;
+		height: 44px;
+		object-fit: cover;
+		border-radius: calc(var(--r-sm) - 3px);
+		flex-shrink: 0;
+	}
+
+	.photo-meta {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.photo-name {
+		font-size: 0.8rem;
+		color: var(--ink);
+	}
+
+	.photo-meta small {
+		font-size: 0.68rem;
+		color: var(--ink-faint);
+	}
+
+	.photo-x {
+		flex-shrink: 0;
+		width: 26px;
+		height: 26px;
+		font-size: 0.75rem;
+		color: var(--ink-faint);
+		border-radius: var(--r-full);
+		transition: color var(--fast);
+	}
+
+	.photo-x:hover {
+		color: var(--ink);
+	}
+
+	/* 進行中：照片安靜地待著，不搶木魚的視線 */
+	.running-photo {
+		width: 68px;
+		height: 68px;
+		object-fit: cover;
+		border-radius: var(--r-sm);
+		margin: 0 auto 0.15rem;
+		opacity: 0.9;
 	}
 
 	.track {
@@ -253,6 +397,40 @@
 		text-align: center;
 	}
 
+	/*
+	 * 照片化成光：先微微亮起來，再整個淡進白光裡。
+	 *
+	 * 刻意不用碎裂、燃燒那類效果——對著一個人的臉做破壞動作，整個儀式就從
+	 * 「我放下了」變成「我詛咒你」，那是完全不同的產品。這裡是溶解成光，
+	 * 收在祝福語上。
+	 */
+	.gone-photo {
+		width: 96px;
+		height: 96px;
+		object-fit: cover;
+		border-radius: var(--r-sm);
+		margin-bottom: 0.5rem;
+		animation: ascend 3.4s var(--ease) forwards;
+	}
+
+	@keyframes ascend {
+		0% {
+			opacity: 0.95;
+			transform: scale(1);
+			filter: brightness(1) blur(0);
+		}
+		45% {
+			opacity: 0.75;
+			transform: scale(1.06) translateY(-8px);
+			filter: brightness(1.5) blur(2px);
+		}
+		100% {
+			opacity: 0;
+			transform: scale(1.22) translateY(-30px);
+			filter: brightness(2.4) blur(12px);
+		}
+	}
+
 	/* 那件事散掉：放大、變淡、模糊 */
 	.gone {
 		margin: 0 0 0.4rem;
@@ -329,7 +507,8 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.gone {
+		.gone,
+		.gone-photo {
 			animation: none;
 			opacity: 0.35;
 		}
