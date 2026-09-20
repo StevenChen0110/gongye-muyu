@@ -36,6 +36,7 @@
 	import AutoControls from '$lib/AutoControls.svelte';
 	import RitualPanel from '$lib/RitualPanel.svelte';
 	import Sidebar from '$lib/Sidebar.svelte';
+	import InstallHint from '$lib/InstallHint.svelte';
 	import AuthPanel from '$lib/AuthPanel.svelte';
 	import {
 		claimIdentity,
@@ -830,6 +831,9 @@
 	onChange={switchMode}
 	onAccount={() => (authOpen = true)}
 />
+
+<!-- 敲過一陣子才提「加到主畫面」，一進來就跳最惹人厭 -->
+<InstallHint knocks={merit} />
 
 <AuthPanel
 	open={authOpen}
