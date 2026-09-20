@@ -12,14 +12,40 @@
 
 	const COOLDOWN_MS = 300; // 前端 rate limit：壓著狂點也不會灌 DB
 
+	/** 按住多久才開始連敲。太短會讓一般的點擊誤判成長按。 */
+	const HOLD_MS = 400;
+	/** 連敲的起始與最快間隔。會在 RAMP_BEATS 下之內線性加速。 */
+	const REPEAT_START_MS = 200;
+	const REPEAT_MIN_MS = 110;
+	const RAMP_BEATS = 8;
+
 	let {
 		fish,
 		haptics = true,
-		onKnock
+		onKnock,
+		onHold = false,
+		onHoldKnock,
+		onHoldChange
 	}: {
 		fish: Fish;
 		haptics?: boolean;
 		onKnock: () => void;
+		/**
+		 * 開不開放長按連敲。
+		 *
+		 * 群組模式一下寫一筆，連敲會灌爆群組 feed；自動敲與超度本來就在自己敲，
+		 * 所以只有個人的手動模式開。
+		 */
+		onHold?: boolean;
+		/**
+		 * 長按連敲的每一下。沒給就退回 onKnock。
+		 *
+		 * 分開的理由：連敲一秒可以敲 9 下，走 onKnock 那條路會變成一秒 9 筆
+		 * INSERT 加 9 次 realtime 廣播，把公開 feed 洗掉。呼叫端應該改走批次。
+		 */
+		onHoldKnock?: () => void;
+		/** 連敲開始／結束。給呼叫端開關批次寫入用。 */
+		onHoldChange?: (holding: boolean) => void;
 	} = $props();
 
 	let striking = $state(false);
@@ -84,6 +110,98 @@
 		knockNow();
 		onKnock();
 	}
+
+	// ── 長按連敲 ──────────────────────────────────────
+	let holdTimer: ReturnType<typeof setTimeout> | null = null;
+	let repeatTimer: ReturnType<typeof setTimeout> | null = null;
+	let holding = $state(false);
+	let heldBeats = 0;
+
+	/**
+	 * 第 n 下的間隔：從 200ms 線性收到 110ms。
+	 *
+	 * 等速連敲聽起來像機器，加速才像真的在使力。收斂到 110ms（約 545 BPM 的
+	 * 半拍感）是因為再快木魚的殘響會疊在一起，變成糊掉的噪音。
+	 */
+	function gapFor(n: number): number {
+		const t = Math.min(1, n / RAMP_BEATS);
+		return REPEAT_START_MS + (REPEAT_MIN_MS - REPEAT_START_MS) * t;
+	}
+
+	function repeatTick() {
+		knockNow();
+		(onHoldKnock ?? onKnock)();
+		heldBeats += 1;
+		// 用 setTimeout 串接而不是 setInterval：間隔本身每一下都在變
+		repeatTimer = setTimeout(repeatTick, gapFor(heldBeats));
+	}
+
+	function beginHold() {
+		holding = true;
+		heldBeats = 0;
+		onHoldChange?.(true);
+		repeatTick();
+	}
+
+	function endHold() {
+		if (holdTimer !== null) clearTimeout(holdTimer);
+		holdTimer = null;
+		if (repeatTimer !== null) clearTimeout(repeatTimer);
+		repeatTimer = null;
+		if (holding) {
+			holding = false;
+			onHoldChange?.(false);
+		}
+	}
+
+	/**
+	 * 空白鍵按住也要能連敲。
+	 *
+	 * 系統的按鍵自動重複會一直送 keydown，但那個速率由系統設定決定、而且會被
+	 * strike() 的 cooldown 擋掉變成卡頓的斷奏，所以改用自己的節奏：第一次
+	 * keydown 正常敲，後續的重複事件只拿來當「還按著」的訊號。
+	 */
+	export function keyDown() {
+		if (!onHold) {
+			strike();
+			return;
+		}
+		if (holding || holdTimer !== null) return; // 自動重複，忽略
+		strike();
+		holdTimer = setTimeout(beginHold, HOLD_MS);
+	}
+
+	export function keyUp() {
+		endHold();
+	}
+
+	function onPointerDown(e: PointerEvent) {
+		strike();
+		if (!onHold) return;
+		// 指標離開元件後仍要收到 pointerup，不然放開時連敲會停不下來
+		(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+		if (holdTimer !== null) clearTimeout(holdTimer);
+		holdTimer = setTimeout(beginHold, HOLD_MS);
+	}
+
+	// 連敲中途被關掉（切驅動、切到群組）時要收乾淨，
+	// 不然計時器會繼續跑，還會跟自動敲搶同一個批次 buffer
+	$effect(() => {
+		if (!onHold) endHold();
+	});
+
+	// 離開頁面時一定要停：背景分頁的 setTimeout 會被節流到 ~1Hz，
+	// 回來時節奏是散的，而且使用者早就放開了
+	$effect(() => {
+		const stop = () => endHold();
+		document.addEventListener('visibilitychange', stop);
+		window.addEventListener('blur', stop);
+		return () => {
+			endHold();
+			document.removeEventListener('visibilitychange', stop);
+			window.removeEventListener('blur', stop);
+		};
+	});
 </script>
 
 <div class="wrap" style="--scale: {fish.scale}">
@@ -102,9 +220,13 @@
 	<button
 		class="fish"
 		class:striking
-		onpointerdown={strike}
+		class:holding
+		onpointerdown={onPointerDown}
+		onpointerup={endHold}
+		onpointercancel={endHold}
+		oncontextmenu={(e) => e.preventDefault()}
 		aria-label="敲木魚"
-		title="敲我（或按空白鍵）"
+		title="敲我（或按空白鍵）。按住可以連敲"
 	>
 		<span class="art">
 			<WoodCanvas draw={drawFish} vw={VW} vh={VH} label={fish.label} />
@@ -178,6 +300,11 @@
 	.fish.striking .mallet {
 		transform: rotate(-6deg);
 		transition-duration: 0.09s;
+	}
+
+	/* 連敲時給一點暖光，讓使用者知道「按住」這件事真的生效了 */
+	.fish.holding .art {
+		filter: drop-shadow(0 0 14px rgba(200, 150, 70, 0.45));
 	}
 
 	.ripples {

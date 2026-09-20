@@ -313,6 +313,46 @@
 		if (row) pushToFeed(row);
 	}
 
+	// ── 長按連敲 ──────────────────────────────────────
+	/**
+	 * 按住不放時的每一下。
+	 *
+	 * 不走 confess()：連敲一秒有 9 下，一下一筆會把「大家的懺悔」整面牆洗掉，
+	 * 也白白吃掉寫入額度。改跟自動敲一樣批次寫，一筆代表好幾十下。
+	 */
+	function onHoldKnock() {
+		merit += 1;
+		total += 1;
+		localStorage.setItem('muyu:merit', String(merit));
+		if (merit === MILESTONE) {
+			blessing = true;
+			setTimeout(() => (blessing = false), 5200);
+		}
+		buffer?.add(1);
+	}
+
+	/** 連敲開始／結束時開關批次寫入。 */
+	function onHoldChange(holding: boolean) {
+		if (holding) {
+			// 手動模式不會有自動敲在跑（切換驅動時會先 stopAuto），所以這個
+			// slot 一定是空的
+			buffer ??= createKnockBuffer({
+				// 連敲帶著當下選的懺悔內容，這樣功德簿的「最常懺悔」才對得上
+				write: (count) =>
+					insertKnock({ sin: selectedSin, fish: fishId, count, source: 'auto' }),
+				// 不推進 feed：連敲不該洗掉真人打字的懺悔。功德與總數在
+				// onHoldKnock 就即時加過了
+				onWritten: () => {}
+			});
+			return;
+		}
+		if (buffer) {
+			void buffer.flush();
+			buffer.dispose();
+			buffer = null;
+		}
+	}
+
 	// ── 自動敲 ────────────────────────────────────────
 	function setBpm(v: number) {
 		bpm = clampBpm(v);
@@ -694,7 +734,11 @@
 		if (el && ['BUTTON', 'A', 'INPUT', 'TEXTAREA'].includes(el.tagName)) return;
 		if (mode === 'community') return;
 		e.preventDefault();
-		knocker?.strike();
+		knocker?.keyDown();
+	}
+
+	function onKeyup(e: KeyboardEvent) {
+		if (e.code === 'Space') knocker?.keyUp();
 	}
 
 	function phraseFor(k: Knock): string {
@@ -714,7 +758,7 @@
 	}
 </script>
 
-<svelte:window on:keydown={onKeydown} />
+<svelte:window on:keydown={onKeydown} on:keyup={onKeyup} />
 
 <Sidebar
 	currentMode={mode}
@@ -983,6 +1027,9 @@
 							{fish}
 							haptics={hapticsOn}
 							onKnock={mode === 'solo' ? onSoloKnock : onGroupKnock}
+							onHold={mode === 'solo' && driver === 'manual'}
+							{onHoldKnock}
+							{onHoldChange}
 						/>
 
 						{#if mode === 'solo' && driver === 'auto'}
