@@ -37,6 +37,7 @@
 	import RitualPanel from '$lib/RitualPanel.svelte';
 	import Sidebar from '$lib/Sidebar.svelte';
 	import InstallHint from '$lib/InstallHint.svelte';
+	import Dissolve from '$lib/Dissolve.svelte';
 	import AuthPanel from '$lib/AuthPanel.svelte';
 	import {
 		claimIdentity,
@@ -116,6 +117,22 @@
 	let photoError = $state<string | null>(null);
 	/** 有沒有要在木魚後面立起那個龕。只有超渡模式、而且真的放了照片才有。 */
 	const showShrine = $derived(mode === 'solo' && driver === 'ritual' && !!ritualPhoto);
+
+	/**
+	 * 龕裡那個圓的直徑，canvas 化光要用。
+	 *
+	 * 直接讀 CSS 算出來的 --photo-w，而不是在這裡複製一份斷點——
+	 * 複製的那份遲早會跟 CSS 分岔。
+	 */
+	let shrineEl = $state<HTMLElement | null>(null);
+	let photoSize = $state(232);
+
+	$effect(() => {
+		if (!shrineEl || !ritualDone) return;
+		const v = getComputedStyle(shrineEl).getPropertyValue('--photo-w').trim();
+		const n = parseFloat(v);
+		if (n > 0) photoSize = n;
+	});
 
 	// 刪除帳號（Apple 上架要求）
 	let confirmDelete = $state(false);
@@ -1160,6 +1177,7 @@
 							照片在前 = 對著誰；照片在後 = 供著誰。
 						-->
 						<div
+							bind:this={shrineEl}
 							class="shrine"
 							class:has-photo={showShrine}
 							class:lit={showShrine && autoRunning}
@@ -1168,9 +1186,14 @@
 							{#if showShrine || ritualDone}
 								<div class="enshrine" aria-hidden="true">
 									<div class="halo"></div>
-									<figure class="frame">
-										<img src={ritualPhoto} alt="" />
-									</figure>
+									{#if ritualDone && ritualPhoto}
+										<!-- 化光交給 canvas：CSS 做不出「碎成幾百個光點各自飄散」 -->
+										<Dissolve src={ritualPhoto} size={photoSize} />
+									{:else}
+										<figure class="frame">
+											<img src={ritualPhoto} alt="" />
+										</figure>
+									{/if}
 								</div>
 								{#if !autoRunning && !ritualDone}
 									<button class="shrine-x" onclick={clearRitualPhoto} aria-label="移除照片">
@@ -1707,38 +1730,12 @@
 	 * 順序不能反。框跟著照片一起升＝把一個東西搬走；框先化掉、照片才升＝
 	 * 放手。這是整段儀式最重要的一拍。
 	 */
-	.shrine.releasing .frame {
-		animation: ascend 3.4s var(--ease) forwards;
-		box-shadow:
-			0 0 0 1px transparent,
-			0 0 0 4px transparent,
-			0 0 0 5px transparent;
-		transition: box-shadow 0.9s var(--ease);
-	}
+	/* 儀式期間 .frame 已經被 canvas 取代（見 Dissolve.svelte）。
+	   canvas 是 absolute 定位、且比圓本身高，木魚長回原本大小時它仍然畫得出去，
+	   所以不用特別保留高度。 */
 
 	.shrine.releasing .halo {
 		animation: halo-release 1.6s var(--ease) forwards;
-	}
-
-	/* 每個 keyframe 都要帶 translateX(-50%)，不然動畫一開始照片會彈到左邊。
-	   放大只到 1.14（不是 1.22）：從底部放大太多會變成朝你逼近，
-	   小幅放大＋長距離上升才是「遠離、上去」 */
-	@keyframes ascend {
-		0% {
-			opacity: 1;
-			transform: translateX(-50%) scale(1);
-			filter: brightness(1) blur(0);
-		}
-		30% {
-			opacity: 0.85;
-			transform: translateX(-50%) scale(1.03) translateY(-10px);
-			filter: brightness(1.35) blur(1px);
-		}
-		100% {
-			opacity: 0;
-			transform: translateX(-50%) scale(1.14) translateY(-54px);
-			filter: brightness(2.3) blur(14px);
-		}
 	}
 
 	@keyframes halo-release {
@@ -1770,15 +1767,6 @@
 		/* 保留狀態差異，只拿掉呼吸 */
 		.shrine.lit .halo {
 			opacity: 1;
-		}
-
-		/* 不動也要讀得出「幾乎不在了」。臉留在 35% 會比文字更有存在感，所以更低 */
-		.shrine.releasing .frame {
-			animation: none;
-			opacity: 0.18;
-			filter: brightness(1.6);
-			box-shadow: none;
-			transform: translateX(-50%);
 		}
 
 		.shrine.releasing .halo {
@@ -2512,10 +2500,15 @@
 			gap: 0.9rem 0.5rem;
 		}
 
-		/* 窄螢幕的木魚本來就小，圓跟著收一點，但仍然是畫面的主角 */
-		.shrine.has-photo {
+		/* 窄螢幕的木魚本來就小，圓跟著收一點，但仍然是畫面的主角。
+		   尺寸放在 .shrine 上而不是 .has-photo：儀式進行時 has-photo 會被拿掉，
+		   但 canvas 化光還要讀 --photo-w 才知道要畫多大。 */
+		.shrine {
 			--photo-w: 206px;
 			--photo-h: 206px;
+		}
+
+		.shrine.has-photo {
 			--shrine-rise: 152px;
 		}
 
