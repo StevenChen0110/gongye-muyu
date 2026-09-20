@@ -1424,8 +1424,8 @@
 		flex-direction: column;
 		align-items: center;
 		width: 100%;
-		--photo-w: 132px;
-		--photo-h: 168px;
+		--photo-w: 176px;
+		--photo-h: 224px;
 		--shrine-rise: 0px;
 		--knock-shrink: 1;
 		padding-top: var(--shrine-rise);
@@ -1434,9 +1434,12 @@
 
 	/* 放了照片：木魚縮到 0.78 讓出上方空間。--knock-shrink 會跟 fish.scale
 	   相乘，尺寸預設（手持 0.74 / 中型 0.88 / 大殿 1）完全不受影響。 */
+	/* 超渡的主角是被超渡的那個人事物，不是木魚：照片放大、木魚退到 0.62。
+	   rise 是算出來的——照片高 224、要有 18% 塞進木魚後面，扣掉木頭頂端在
+	   畫布內的內縮（約 24px），所以 224*0.82-24 ≈ 159。 */
 	.shrine.has-photo {
-		--shrine-rise: 104px;
-		--knock-shrink: 0.78;
+		--shrine-rise: 159px;
+		--knock-shrink: 0.62;
 	}
 
 	/* 儀式進行到照片已經升走了，木魚才長回原本大小——壇重新空出來 */
@@ -1461,7 +1464,7 @@
 	 * 放了照片時改成從木魚中段起、只飄 52px，在碰到龕之前就淡掉。
 	 */
 	.shrine.has-photo :global(.floater) {
-		top: 52%;
+		top: 66%;
 		animation-name: rise-low;
 	}
 
@@ -1543,10 +1546,10 @@
 	/* 光從接縫升起——木魚是燈，照片是被照亮的那個。由上往下打光像審問 */
 	.halo {
 		position: absolute;
-		top: calc(var(--shrine-rise) - 34px);
+		top: calc(var(--shrine-rise) - 38px);
 		left: 50%;
-		width: 190px;
-		height: 96px;
+		width: 234px;
+		height: 108px;
 		transform: translateX(-50%);
 		border-radius: 50%;
 		background: radial-gradient(
@@ -2344,16 +2347,16 @@
 			gap: 0.9rem 0.5rem;
 		}
 
-		/* 窄螢幕連手持木魚都只剩 ~190px，龕要跟著縮才不會壓過木魚 */
+		/* 窄螢幕的木魚本來就小，照片跟著收一點，但仍然是畫面的主角 */
 		.shrine.has-photo {
-			--photo-w: 118px;
-			--photo-h: 150px;
-			--shrine-rise: 92px;
+			--photo-w: 158px;
+			--photo-h: 200px;
+			--shrine-rise: 142px;
 		}
 
 		.halo {
-			width: 168px;
-			height: 86px;
+			width: 208px;
+			height: 98px;
 		}
 	}
 
