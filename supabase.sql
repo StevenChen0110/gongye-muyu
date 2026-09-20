@@ -179,6 +179,44 @@ $$;
 revoke execute on function set_nickname(uuid, text) from public, anon;
 grant execute on function set_nickname(uuid, text) to authenticated;
 
+-- ── 刪除帳號 ──────────────────────────────────────────────
+-- Apple 上架硬性要求 App 內要能刪帳號（不能只給客服信箱），GDPR / 個資法
+-- 也是同樣的要求。
+--
+-- 策略是匿名化而不是全刪：knocks 留著但 user_id 設成 null，所以「大家一共」
+-- 不會當場少一截（那是全站共有的數字，別人也看得到），但這個人的暱稱、
+-- auth 帳號、個人統計全部消失，任何一筆都追不回本人。
+create or replace function delete_account()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  mine users;
+begin
+  if uid is null then
+    raise exception '未登入' using errcode = '28000';
+  end if;
+
+  select * into mine from users where auth_id = uid;
+
+  if mine.id is not null then
+    -- 先把敲擊跟這個人脫鉤。on delete set null 也會做，但寫明確一點，
+    -- 而且這樣即使將來改了 FK 行為也不會突然變成連敲擊一起刪。
+    update knocks set user_id = null where user_id = mine.id;
+    delete from users where id = mine.id;
+  end if;
+
+  -- 最後才刪 auth 帳號：這一步成功之後 uid 就失效了
+  delete from auth.users where id = uid;
+end;
+$$;
+
+revoke execute on function delete_account() from public, anon;
+grant execute on function delete_account() to authenticated;
+
 -- ── 功德簿統計 ────────────────────────────────────────────
 -- 全部在 DB 算完再回傳一包 json：敲上千下之後，把整串 knocks 拉回前端
 -- 再自己 group by 是不划算的。

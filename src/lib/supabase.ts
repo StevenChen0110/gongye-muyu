@@ -94,6 +94,22 @@ export async function updateNickname(nickname: string): Promise<string | null> {
 	return error ? error.message : null;
 }
 
+/**
+ * 刪除帳號。不可復原。
+ *
+ * 敲擊紀錄會留下但跟你脫鉤（user_id 設成 null）——「大家一共」是全站共有的
+ * 數字，不該因為有人退出就當場倒退。暱稱、登入帳號、個人統計全部消失。
+ *
+ * 邏輯全在 DB 的 delete_account() 裡：前端沒有刪 auth.users 的權限。
+ */
+export async function deleteAccount(): Promise<string | null> {
+	if (!supabase) return '沒有連上伺服器';
+	const { error } = await supabase.rpc('delete_account');
+	if (error) return error.message;
+	await supabase.auth.signOut();
+	return null;
+}
+
 /** 冷啟動用：抓最近的懺悔，讓 feed 一開始就有真實內容而不是空白。 */
 export async function fetchRecentKnocks(limit = 30, groupId: string | null = null): Promise<Knock[]> {
 	if (!supabase) return [];

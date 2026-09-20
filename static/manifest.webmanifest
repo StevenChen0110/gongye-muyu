@@ -1,0 +1,23 @@
+{
+	"name": "淨心木魚",
+	"short_name": "淨心木魚",
+	"description": "敲一下，靜一下。自己敲、自動敲，或寫下一件放不下的事，敲完它。",
+	"lang": "zh-Hant-TW",
+	"start_url": "/",
+	"scope": "/",
+	"display": "standalone",
+	"orientation": "portrait",
+	"background_color": "#f6f2ea",
+	"theme_color": "#f6f2ea",
+	"categories": ["lifestyle", "health"],
+	"icons": [
+		{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+		{ "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+		{
+			"src": "/icon-maskable-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "maskable"
+		}
+	]
+}

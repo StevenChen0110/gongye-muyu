@@ -49,6 +49,7 @@
 		fetchGroupByCode,
 		insertKnock,
 		updateNickname,
+		deleteAccount,
 		subscribeToKnocks,
 		isConfigured,
 		type Knock,
@@ -114,6 +115,11 @@
 	let photoError = $state<string | null>(null);
 	/** 有沒有要在木魚後面立起那個龕。只有超渡模式、而且真的放了照片才有。 */
 	const showShrine = $derived(mode === 'solo' && driver === 'ritual' && !!ritualPhoto);
+
+	// 刪除帳號（Apple 上架要求）
+	let confirmDelete = $state(false);
+	let deleting = $state(false);
+	let deleteError = $state<string | null>(null);
 
 	let slowDown = $state(false);
 	let ambient = $state<AmbientId>('none');
@@ -239,6 +245,26 @@
 		merit = row.knock_count;
 		localStorage.setItem('muyu:merit', String(merit));
 		if (mode === 'community') ranking = await fetchRanking(20);
+	}
+
+	/**
+	 * 刪除帳號。不可逆，所以 UI 上要按兩次。
+	 *
+	 * deleteAccount() 內部會 signOut，onSignedOut 就會把本機身分重置成一個
+	 * 全新的路人——不需要在這裡重複做一次。
+	 */
+	async function removeAccount() {
+		deleting = true;
+		deleteError = null;
+		const err = await deleteAccount();
+		deleting = false;
+		if (err) {
+			deleteError = err;
+			return;
+		}
+		confirmDelete = false;
+		mode = 'solo';
+		stats = EMPTY_STATS;
 	}
 
 	/** 登出後變回一個全新的路人，之後敲的不會再記到剛才那個帳號上。 */
@@ -881,6 +907,34 @@
 						<dt>加入時間</dt>
 						<dd>{stats.joined ? joinedText(stats.joined) : '—'}</dd>
 					</dl>
+
+					<p class="privacy-link">
+						<a href="/privacy">隱私政策</a>
+					</p>
+
+					{#if signedIn}
+						<!-- 刪帳號是不可逆的，所以要按兩次才會真的執行 -->
+						<div class="danger">
+							{#if !confirmDelete}
+								<button class="del-link" onclick={() => (confirmDelete = true)}>刪除帳號</button>
+							{:else}
+								<p class="del-warn">
+									刪掉之後就找不回來了。敲過的功德會留在「大家一共」裡，但不再屬於任何人。
+								</p>
+								<div class="del-row">
+									<button class="del-go" onclick={removeAccount} disabled={deleting}>
+										{deleting ? '刪除中…' : '確定刪除'}
+									</button>
+									<button class="del-cancel" onclick={() => (confirmDelete = false)} disabled={deleting}>
+										算了
+									</button>
+								</div>
+							{/if}
+							{#if deleteError}
+								<p class="error">{deleteError}</p>
+							{/if}
+						</div>
+					{/if}
 				</div>
 
 				{#if statsLoading}
@@ -1690,6 +1744,76 @@
 			animation: none;
 			opacity: 0;
 		}
+	}
+
+	.privacy-link {
+		margin: 0.9rem 0 0;
+		font-size: 0.76rem;
+	}
+
+	.privacy-link a {
+		color: var(--ink-faint);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+
+	.privacy-link a:hover {
+		color: var(--ink-soft);
+	}
+
+	/* 刪除帳號：放在最下面、低調，但找得到。不用紅色——這套色票沒有紅，
+	   而且把它做得很刺眼只會讓人以為誤觸會出事 */
+	.danger {
+		margin-top: 1rem;
+		padding-top: 0.9rem;
+		border-top: 1px solid var(--line-soft);
+	}
+
+	.del-link {
+		font-size: 0.76rem;
+		color: var(--ink-faint);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+		transition: color var(--fast);
+	}
+
+	.del-link:hover {
+		color: var(--ink-soft);
+	}
+
+	.del-warn {
+		margin: 0 0 0.6rem;
+		font-size: 0.76rem;
+		line-height: 1.6;
+		color: var(--ink-soft);
+	}
+
+	.del-row {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.del-go {
+		padding: 0.42rem 0.9rem;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: #fffdf9;
+		background: var(--sandal-deep);
+		border-radius: var(--r-sm);
+		transition: opacity var(--fast);
+	}
+
+	.del-go:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+
+	.del-cancel {
+		padding: 0.42rem 0.9rem;
+		font-size: 0.78rem;
+		color: var(--ink-soft);
+		background: var(--surface-2);
+		border-radius: var(--r-sm);
 	}
 
 	.photo-err {
@@ -2663,7 +2787,8 @@
 			align-items: center;
 			justify-content: center;
 			gap: 0.45rem;
-			padding: 0.7rem 1rem;
+			/* viewport-fit=cover 之後內容會鑽到瀏海底下，上緣要自己讓開 */
+			padding: calc(0.7rem + env(safe-area-inset-top)) 1rem 0.7rem;
 			background: rgba(246, 242, 234, 0.85);
 			backdrop-filter: saturate(1.6) blur(14px);
 			-webkit-backdrop-filter: saturate(1.6) blur(14px);
