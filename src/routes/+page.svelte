@@ -1424,8 +1424,9 @@
 		flex-direction: column;
 		align-items: center;
 		width: 100%;
-		--photo-w: 176px;
-		--photo-h: 224px;
+		/* 圓形：正圓像圓光（佛像背後那輪），比相框更貼這個儀式 */
+		--photo-w: 232px;
+		--photo-h: 232px;
 		--shrine-rise: 0px;
 		--knock-shrink: 1;
 		padding-top: var(--shrine-rise);
@@ -1434,12 +1435,12 @@
 
 	/* 放了照片：木魚縮到 0.78 讓出上方空間。--knock-shrink 會跟 fish.scale
 	   相乘，尺寸預設（手持 0.74 / 中型 0.88 / 大殿 1）完全不受影響。 */
-	/* 超渡的主角是被超渡的那個人事物，不是木魚：照片放大、木魚退到 0.62。
-	   rise 是算出來的——照片高 224、要有 18% 塞進木魚後面，扣掉木頭頂端在
-	   畫布內的內縮（約 24px），所以 224*0.82-24 ≈ 159。 */
+	/* 超渡的主角是被超渡的那個人事物，不是木魚：照片放大、木魚退到 0.6。
+	   rise 是算出來的——圓 232、有 16% 塞進木魚後面，扣掉木頭頂端在畫布內的
+	   內縮（約 24px），所以 232*0.84-24 ≈ 171。 */
 	.shrine.has-photo {
-		--shrine-rise: 159px;
-		--knock-shrink: 0.62;
+		--shrine-rise: 171px;
+		--knock-shrink: 0.6;
 	}
 
 	/* 儀式進行到照片已經升走了，木魚才長回原本大小——壇重新空出來 */
@@ -1498,8 +1499,7 @@
 		width: var(--photo-w);
 		height: var(--photo-h);
 		margin: 0;
-		/* 直立的橢圓，下半略飽滿——正圓像蛋，這個比例才像龕 */
-		border-radius: 50% / 46% 46% 54% 54%;
+		border-radius: 50%;
 		overflow: hidden;
 		background: var(--surface-2);
 		/* 中間那層 4px 的紙襯很關鍵：少了它照片會像直接鑲在木魚上（同一個
@@ -1527,8 +1527,8 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
-		/* 大部分照片的臉在中線偏上 */
-		object-position: 50% 32%;
+		/* 大部分照片的臉在中線偏上。圓形沒有直式那段多餘高度，所以只偏一點點 */
+		object-position: 50% 40%;
 	}
 
 	/* 開始超渡：像整個亮起來、對上焦，而不是有什麼被敲到 */
@@ -1546,10 +1546,10 @@
 	/* 光從接縫升起——木魚是燈，照片是被照亮的那個。由上往下打光像審問 */
 	.halo {
 		position: absolute;
-		top: calc(var(--shrine-rise) - 38px);
+		top: calc(var(--shrine-rise) - 42px);
 		left: 50%;
-		width: 234px;
-		height: 108px;
+		width: 282px;
+		height: 116px;
 		transform: translateX(-50%);
 		border-radius: 50%;
 		background: radial-gradient(
@@ -2347,16 +2347,16 @@
 			gap: 0.9rem 0.5rem;
 		}
 
-		/* 窄螢幕的木魚本來就小，照片跟著收一點，但仍然是畫面的主角 */
+		/* 窄螢幕的木魚本來就小，圓跟著收一點，但仍然是畫面的主角 */
 		.shrine.has-photo {
-			--photo-w: 158px;
-			--photo-h: 200px;
-			--shrine-rise: 142px;
+			--photo-w: 206px;
+			--photo-h: 206px;
+			--shrine-rise: 152px;
 		}
 
 		.halo {
-			width: 208px;
-			height: 98px;
+			width: 250px;
+			height: 106px;
 		}
 	}
 
