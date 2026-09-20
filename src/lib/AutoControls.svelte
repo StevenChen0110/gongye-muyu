@@ -61,12 +61,66 @@
 	const mmss = $derived(
 		`${Math.floor(remaining / 60)}:${String(Math.floor(remaining % 60)).padStart(2, '0')}`
 	);
+
+	/**
+	 * 輸入框裡的字。跟 bpm 分開存，因為打字途中會經過不合法的中間狀態——
+	 * 想輸入 72 會先打出 7，這時不能立刻 clamp 成 30，不然使用者永遠打不完。
+	 */
+	let draft = $state('');
+	/** 正在打字時不要被外部的 bpm 覆寫（滑軌拖到一半也算） */
+	let typing = $state(false);
+
+	// 初值與後續的同步都走這裡：滑軌、慢/一般/快的按鈕改了 bpm，數字要跟著動
+	$effect(() => {
+		if (!typing) draft = String(bpm);
+	});
+
+	function onType() {
+		typing = true;
+		// 只留數字，貼上中文或符號都擋掉（draft 已由 bind:value 更新）
+		const cleaned = draft.replace(/\D/g, '').slice(0, 3);
+		if (cleaned !== draft) draft = cleaned;
+
+		// 打到合法範圍內就即時套用，聽得到速度在變
+		const n = Number(cleaned);
+		if (cleaned !== '' && n >= BPM_MIN && n <= BPM_MAX) onBpm(n);
+	}
+
+	/** 離開輸入框才收斂：空白或超出範圍就拉回最近的合法值 */
+	function commit() {
+		const n = Number(draft);
+		const next = draft === '' || Number.isNaN(n) ? bpm : Math.min(BPM_MAX, Math.max(BPM_MIN, n));
+		// 一定要自己寫回去：清空後 bpm 沒變，上面那個 $effect 不會重跑，
+		// 輸入框就會停在空白
+		draft = String(next);
+		typing = false;
+		if (next !== bpm) onBpm(next);
+	}
 </script>
 
 <div class="auto">
 	<div class="row">
 		<span class="label">速度</span>
-		<span class="readout">{bpm} <small>BPM</small></span>
+		<span class="readout">
+			<!--
+				可以直接打字改。用 text 而不是 number：number 的上下箭頭在手機上
+				會擠掉空間，而且 iOS 的數字鍵盤要靠 inputmode 才叫得出來。
+			-->
+			<input
+				class="bpm-input"
+				type="text"
+				inputmode="numeric"
+				maxlength="3"
+				bind:value={draft}
+				aria-label="每分鐘敲幾下"
+				oninput={onType}
+				onblur={commit}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') e.currentTarget.blur();
+				}}
+			/>
+			<small>BPM</small>
+		</span>
 	</div>
 
 	<div class="track" style="--n: {PACE.length}; --i: {paceIdx}" role="group" aria-label="速度">
@@ -206,11 +260,42 @@
 	}
 
 	.readout {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.2rem;
 		margin-left: auto;
 		font-family: var(--serif);
 		font-size: 0.95rem;
 		color: var(--ink);
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* 看起來像數字、不像表單欄位，但點下去就能改。
+	   底線是唯一的提示——不加的話沒有人會知道它可以打字。 */
+	.bpm-input {
+		width: 2.6em;
+		padding: 0.1rem 0.15rem;
+		font: inherit;
+		font-variant-numeric: tabular-nums;
+		text-align: right;
+		color: inherit;
+		background: none;
+		border: none;
+		border-bottom: 1px dashed var(--line);
+		border-radius: 0;
+		transition:
+			border-color var(--fast),
+			background var(--fast);
+	}
+
+	.bpm-input:hover {
+		border-bottom-color: var(--ink-faint);
+	}
+
+	.bpm-input:focus {
+		outline: none;
+		border-bottom-color: var(--saffron);
+		background: var(--surface-2);
 	}
 
 	.readout small {
