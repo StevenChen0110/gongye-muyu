@@ -14,10 +14,15 @@
 
 	/** 按住多久才開始連敲。太短會讓一般的點擊誤判成長按。 */
 	const HOLD_MS = 400;
-	/** 連敲的起始與最快間隔。會在 RAMP_BEATS 下之內線性加速。 */
-	const REPEAT_START_MS = 200;
-	const REPEAT_MIN_MS = 110;
-	const RAMP_BEATS = 8;
+	/**
+	 * 連敲的起始與最快間隔。會在 RAMP_BEATS 下之內線性加速。
+	 *
+	 * 收在 180ms（約 330 BPM）而不是更快：再快就超過真實的誦經速度，
+	 * 聽起來像啄木鳥而不是在敲木魚，殘響也會開始疊在一起糊掉。
+	 */
+	const REPEAT_START_MS = 320;
+	const REPEAT_MIN_MS = 180;
+	const RAMP_BEATS = 6;
 
 	let {
 		fish,
@@ -118,10 +123,9 @@
 	let heldBeats = 0;
 
 	/**
-	 * 第 n 下的間隔：從 200ms 線性收到 110ms。
+	 * 第 n 下的間隔：從 320ms 線性收到 180ms。
 	 *
-	 * 等速連敲聽起來像機器，加速才像真的在使力。收斂到 110ms（約 545 BPM 的
-	 * 半拍感）是因為再快木魚的殘響會疊在一起，變成糊掉的噪音。
+	 * 等速連敲聽起來像機器，加速才像真的在使力。
 	 */
 	function gapFor(n: number): number {
 		const t = Math.min(1, n / RAMP_BEATS);
