@@ -328,6 +328,18 @@
 	}
 
 	// ── 個人模式 ──────────────────────────────────────
+	/**
+	 * 快速連點時，前一下的時間。
+	 *
+	 * 一下一筆 INSERT 在「慢慢敲」時是對的——那筆懺悔要出現在公開 feed 上。
+	 * 但手指快速連點時（間隔 < RAPID_MS）一秒可以敲十下，那樣會把整面牆洗掉，
+	 * 所以改走批次。
+	 */
+	let lastSoloAt = 0;
+	const RAPID_MS = 260;
+	/** 連點停了這麼久就把批次寫出去、收工 */
+	let rapidTimer: ReturnType<typeof setTimeout> | null = null;
+
 	function onSoloKnock() {
 		merit += 1;
 		localStorage.setItem('muyu:merit', String(merit));
@@ -343,7 +355,41 @@
 			setTimeout(() => (hintPicker = false), 1400);
 			return;
 		}
-		void confess(selectedSin);
+
+		const now = performance.now();
+		const rapid = now - lastSoloAt < RAPID_MS;
+		lastSoloAt = now;
+
+		if (rapid) {
+			// 進入連點模式：開批次（如果還沒開），這一下記進去
+			startRapid();
+			total += 1;
+			buffer?.add(1);
+		} else {
+			void confess(selectedSin);
+		}
+
+		// 手停下來就收工，把剩下的寫出去
+		if (rapidTimer !== null) clearTimeout(rapidTimer);
+		rapidTimer = setTimeout(endRapid, RAPID_MS * 2);
+	}
+
+	function startRapid() {
+		if (buffer) return;
+		buffer = createKnockBuffer({
+			write: (count) => insertKnock({ sin: selectedSin, fish: fishId, count, source: 'auto' }),
+			// 不推進 feed：連點不該洗掉別人打字的懺悔。功德與總數在
+			// onSoloKnock 就即時加過了
+			onWritten: () => {}
+		});
+	}
+
+	function endRapid() {
+		rapidTimer = null;
+		if (!buffer) return;
+		void buffer.flush();
+		buffer.dispose();
+		buffer = null;
 	}
 
 	async function confess(sin: string) {
@@ -371,24 +417,15 @@
 
 	/** 連敲開始／結束時開關批次寫入。 */
 	function onHoldChange(holding: boolean) {
+		// 跟快速連點共用同一組批次（同一個 buffer slot），否則兩邊會互相搶
 		if (holding) {
-			// 手動模式不會有自動敲在跑（切換驅動時會先 stopAuto），所以這個
-			// slot 一定是空的
-			buffer ??= createKnockBuffer({
-				// 連敲帶著當下選的懺悔內容，這樣功德簿的「最常懺悔」才對得上
-				write: (count) =>
-					insertKnock({ sin: selectedSin, fish: fishId, count, source: 'auto' }),
-				// 不推進 feed：連敲不該洗掉真人打字的懺悔。功德與總數在
-				// onHoldKnock 就即時加過了
-				onWritten: () => {}
-			});
+			// 長按期間不要讓連點的收工計時器把 buffer 關掉
+			if (rapidTimer !== null) clearTimeout(rapidTimer);
+			rapidTimer = null;
+			startRapid();
 			return;
 		}
-		if (buffer) {
-			void buffer.flush();
-			buffer.dispose();
-			buffer = null;
-		}
+		endRapid();
 	}
 
 	// ── 自動敲 ────────────────────────────────────────

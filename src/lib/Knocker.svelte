@@ -10,7 +10,17 @@
 	import { buzz } from './haptics';
 	import type { Fish } from './fish';
 
-	const COOLDOWN_MS = 300; // 前端 rate limit：壓著狂點也不會灌 DB
+	/**
+	 * 兩下之間最短的間隔。
+	 *
+	 * 這個數字唯一的用途是「別讓同一下被算兩次」（例如 pointerdown 與 click
+	 * 重複觸發），不是拿來限制使用者敲多快——想敲多快是他的事。
+	 * 80ms 已經比人類連點的極限還快，但仍然擋得住重複事件。
+	 *
+	 * 灌 DB 的問題不靠這裡解：快速連敲會走批次寫入（見 +page.svelte 的
+	 * onHoldChange / rapidBuffer），一筆代表好幾下。
+	 */
+	const COOLDOWN_MS = 80;
 
 	/** 按住多久才開始連敲。太短會讓一般的點擊誤判成長按。 */
 	const HOLD_MS = 400;
