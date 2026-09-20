@@ -10,18 +10,6 @@
 	import { buzz } from './haptics';
 	import type { Fish } from './fish';
 
-	/**
-	 * 兩下之間最短的間隔。
-	 *
-	 * 這個數字唯一的用途是「別讓同一下被算兩次」（例如 pointerdown 與 click
-	 * 重複觸發），不是拿來限制使用者敲多快——想敲多快是他的事。
-	 * 80ms 已經比人類連點的極限還快，但仍然擋得住重複事件。
-	 *
-	 * 灌 DB 的問題不靠這裡解：快速連敲會走批次寫入（見 +page.svelte 的
-	 * onHoldChange / rapidBuffer），一筆代表好幾下。
-	 */
-	const COOLDOWN_MS = 80;
-
 	/** 按住多久才開始連敲。太短會讓一般的點擊誤判成長按。 */
 	const HOLD_MS = 400;
 	/**
@@ -67,7 +55,6 @@
 	let floaters = $state<{ id: number; dx: number; rot: number }[]>([]);
 	let ripples = $state<number[]>([]);
 
-	let lastAt = 0;
 	let seq = 0;
 	let animSeq = 0;
 
@@ -116,12 +103,18 @@
 		animate();
 	}
 
-	/** 使用者點擊／空白鍵的入口。有 rate limit，會回報 onKnock。 */
+	/**
+	 * 使用者點擊／空白鍵的入口。每一下都算，不做時間節流。
+	 *
+	 * 這裡刻意沒有 rate limit：手指能敲多快就算多快，手點得到卻沒加到功德
+	 * 是最讓人困惑的事。之前的 80ms 上限在雙手交替敲時（間隔 40~60ms）
+	 * 會漏掉將近一半。
+	 *
+	 * 重複事件不靠時間擋——pointerdown 每根手指每次按下只會發一次，
+	 * 而且沒有綁 click，所以不會有同一下被算兩次的問題。
+	 * 灌 DB 也不靠這裡：快速連點會走批次寫入（見 +page.svelte 的 startRapid）。
+	 */
 	export function strike() {
-		const t = performance.now();
-		if (t - lastAt < COOLDOWN_MS) return;
-		lastAt = t;
-
 		knockNow();
 		onKnock();
 	}
@@ -171,9 +164,9 @@
 	/**
 	 * 空白鍵按住也要能連敲。
 	 *
-	 * 系統的按鍵自動重複會一直送 keydown，但那個速率由系統設定決定、而且會被
-	 * strike() 的 cooldown 擋掉變成卡頓的斷奏，所以改用自己的節奏：第一次
-	 * keydown 正常敲，後續的重複事件只拿來當「還按著」的訊號。
+	 * 系統的按鍵自動重複會一直送 keydown，但那個速率由使用者的系統設定決定，
+	 * 快慢不一。所以改用自己的節奏：第一次 keydown 正常敲，後續的重複事件
+	 * 只拿來當「還按著」的訊號。
 	 */
 	export function keyDown() {
 		if (!onHold) {
