@@ -112,6 +112,8 @@
 	/** 本機照片的 object URL。null = 沒放。影像本身不離開這台裝置。 */
 	let ritualPhoto = $state<string | null>(null);
 	let photoError = $state<string | null>(null);
+	/** 有沒有要在木魚後面立起那個龕。只有超渡模式、而且真的放了照片才有。 */
+	const showShrine = $derived(mode === 'solo' && driver === 'ritual' && !!ritualPhoto);
 
 	let slowDown = $state(false);
 	let ambient = $state<AmbientId>('none');
@@ -1057,15 +1059,41 @@
 							</div>
 						{/if}
 
-						<Knocker
-							bind:this={knocker}
-							{fish}
-							haptics={hapticsOn}
-							onKnock={mode === 'solo' ? onSoloKnock : onGroupKnock}
-							onHold={mode === 'solo' && driver === 'manual'}
-							{onHoldKnock}
-							{onHoldChange}
-						/>
+						<!--
+							超渡的龕。照片不是貼在木魚上，是立在木魚「後面」、被木魚的光托著。
+							z-index 木魚(2) 在照片(1) 前面——這個前後關係就是整個設計的重點：
+							照片在前 = 對著誰；照片在後 = 供著誰。
+						-->
+						<div
+							class="shrine"
+							class:has-photo={showShrine}
+							class:lit={showShrine && autoRunning}
+							class:releasing={ritualDone}
+						>
+							{#if showShrine || ritualDone}
+								<div class="enshrine" aria-hidden="true">
+									<div class="halo"></div>
+									<figure class="frame">
+										<img src={ritualPhoto} alt="" />
+									</figure>
+								</div>
+								{#if !autoRunning && !ritualDone}
+									<button class="shrine-x" onclick={clearRitualPhoto} aria-label="移除照片">
+										✕
+									</button>
+								{/if}
+							{/if}
+
+							<Knocker
+								bind:this={knocker}
+								{fish}
+								haptics={hapticsOn}
+								onKnock={mode === 'solo' ? onSoloKnock : onGroupKnock}
+								onHold={mode === 'solo' && driver === 'manual'}
+								{onHoldKnock}
+								{onHoldChange}
+							/>
+						</div>
 
 						{#if mode === 'solo' && driver === 'auto'}
 							<AutoControls
@@ -1100,7 +1128,6 @@
 								onToggle={toggleRitual}
 								onDismiss={dismissRitual}
 								onPhoto={setRitualPhoto}
-								onClearPhoto={clearRitualPhoto}
 							/>
 							{#if photoError}
 								<p class="photo-err" transition:fade={{ duration: 200 }}>{photoError}</p>
@@ -1385,6 +1412,281 @@
 		width: 1px;
 		height: 30px;
 		background: var(--line);
+	}
+
+	/* ── 超渡的龕 ────────────────────────────────────
+	   照片立在木魚後面，被木魚上方的光托著。整組設計的重點是前後關係：
+	   木魚(z-index 2) 永遠在照片(1) 前面，所以你敲的是擋在照片前面的木頭，
+	   不是照片本身。照片在前是「對著誰」，照片在後是「供著誰」。 */
+	.shrine {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		width: 100%;
+		--photo-w: 132px;
+		--photo-h: 168px;
+		--shrine-rise: 0px;
+		--knock-shrink: 1;
+		padding-top: var(--shrine-rise);
+		transition: padding-top 0.35s cubic-bezier(0.3, 0.8, 0.4, 1);
+	}
+
+	/* 放了照片：木魚縮到 0.78 讓出上方空間。--knock-shrink 會跟 fish.scale
+	   相乘，尺寸預設（手持 0.74 / 中型 0.88 / 大殿 1）完全不受影響。 */
+	.shrine.has-photo {
+		--shrine-rise: 104px;
+		--knock-shrink: 0.78;
+	}
+
+	/* 儀式進行到照片已經升走了，木魚才長回原本大小——壇重新空出來 */
+	.shrine.releasing {
+		--shrine-rise: 0px;
+		--knock-shrink: 1;
+		transition-delay: 1.4s;
+	}
+
+	.shrine.releasing :global(.wrap) {
+		transition-delay: 1.4s;
+	}
+
+	.shrine :global(.wrap) {
+		position: relative;
+		z-index: 2;
+	}
+
+	/*
+	 * 功德浮字預設從木魚頂端往上飄 104px，在這裡會正好穿過照片的臉。
+	 * 那等於每敲一下就有東西打在照片上——正是這個設計要避免的畫面。
+	 * 放了照片時改成從木魚中段起、只飄 52px，在碰到龕之前就淡掉。
+	 */
+	.shrine.has-photo :global(.floater) {
+		top: 52%;
+		animation-name: rise-low;
+	}
+
+	@keyframes rise-low {
+		0% {
+			opacity: 0;
+			transform: translate(calc(-50% + var(--dx)), 10px) scale(0.75) rotate(var(--rot));
+		}
+		22% {
+			opacity: 1;
+			transform: translate(calc(-50% + var(--dx)), 0) scale(1.04) rotate(var(--rot));
+		}
+		100% {
+			opacity: 0;
+			transform: translate(calc(-50% + var(--dx)), -52px) scale(1) rotate(var(--rot));
+		}
+	}
+
+	/* 整層不吃點擊：木魚是個 button，上面不能有東西攔住它 */
+	.enshrine {
+		position: absolute;
+		inset: 0;
+		z-index: 1;
+		pointer-events: none;
+	}
+
+	.frame {
+		position: absolute;
+		top: 0;
+		left: 50%;
+		width: var(--photo-w);
+		height: var(--photo-h);
+		margin: 0;
+		/* 直立的橢圓，下半略飽滿——正圓像蛋，這個比例才像龕 */
+		border-radius: 50% / 46% 46% 54% 54%;
+		overflow: hidden;
+		background: var(--surface-2);
+		/* 中間那層 4px 的紙襯很關鍵：少了它照片會像直接鑲在木魚上（同一個
+		   物件＝貼在你要敲的東西上），有了它才是一張被裱起來、另外立著的像 */
+		box-shadow:
+			0 0 0 1px var(--line),
+			0 0 0 4px var(--surface),
+			0 0 0 5px rgba(176, 124, 78, 0.28),
+			var(--shadow-lift);
+		/* 稍微退一點彩度，讓現代照片融進這套暖色；太飽和會整個跳到最前面 */
+		opacity: 0.88;
+		filter: saturate(0.92);
+		/* 從底部升起：它是從供台上離開，不是朝你放大 */
+		transform: translateX(-50%);
+		transform-origin: 50% 88%;
+		transition:
+			opacity var(--slow),
+			filter var(--slow),
+			transform var(--slow),
+			box-shadow var(--slow);
+	}
+
+	.frame img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		/* 大部分照片的臉在中線偏上 */
+		object-position: 50% 32%;
+	}
+
+	/* 開始超渡：像整個亮起來、對上焦，而不是有什麼被敲到 */
+	.shrine.lit .frame {
+		opacity: 1;
+		filter: saturate(1);
+		transform: translateX(-50%) translateY(-3px);
+		box-shadow:
+			0 0 0 1px var(--line),
+			0 0 0 4px var(--surface),
+			0 0 0 5px rgba(176, 124, 78, 0.42),
+			var(--shadow-lift);
+	}
+
+	/* 光從接縫升起——木魚是燈，照片是被照亮的那個。由上往下打光像審問 */
+	.halo {
+		position: absolute;
+		top: calc(var(--shrine-rise) - 34px);
+		left: 50%;
+		width: 190px;
+		height: 96px;
+		transform: translateX(-50%);
+		border-radius: 50%;
+		background: radial-gradient(
+			ellipse at 50% 60%,
+			rgba(200, 135, 60, 0.2) 0%,
+			rgba(220, 178, 137, 0.12) 42%,
+			rgba(220, 178, 137, 0) 72%
+		);
+		opacity: 0;
+		transition: opacity var(--slow);
+		pointer-events: none;
+	}
+
+	.shrine.has-photo .halo {
+		opacity: 0.85;
+	}
+
+	.shrine.lit .halo {
+		opacity: 1;
+		animation: breathe 4.2s var(--ease) infinite;
+	}
+
+	/* 4.2 秒約一次慢呼吸，刻意不跟敲擊同步——光一跟著敲就變成照片在閃躲 */
+	@keyframes breathe {
+		0%,
+		100% {
+			opacity: 0.72;
+			transform: translateX(-50%) scale(1);
+		}
+		50% {
+			opacity: 1;
+			transform: translateX(-50%) scale(1.07);
+		}
+	}
+
+	.shrine-x {
+		position: absolute;
+		top: 2px;
+		left: calc(50% + var(--photo-w) / 2 - 4px);
+		z-index: 3;
+		width: 28px;
+		height: 28px;
+		font-size: 0.75rem;
+		color: var(--ink-faint);
+		background: var(--surface);
+		border-radius: var(--r-full);
+		box-shadow: var(--shadow-soft);
+		transition:
+			color var(--fast),
+			opacity var(--fast);
+	}
+
+	.shrine-x:hover {
+		color: var(--ink);
+	}
+
+	/*
+	 * 儀式：框先鬆手（0.9s），照片才升走（3.4s）。
+	 *
+	 * 順序不能反。框跟著照片一起升＝把一個東西搬走；框先化掉、照片才升＝
+	 * 放手。這是整段儀式最重要的一拍。
+	 */
+	.shrine.releasing .frame {
+		animation: ascend 3.4s var(--ease) forwards;
+		box-shadow:
+			0 0 0 1px transparent,
+			0 0 0 4px transparent,
+			0 0 0 5px transparent;
+		transition: box-shadow 0.9s var(--ease);
+	}
+
+	.shrine.releasing .halo {
+		animation: halo-release 1.6s var(--ease) forwards;
+	}
+
+	/* 每個 keyframe 都要帶 translateX(-50%)，不然動畫一開始照片會彈到左邊。
+	   放大只到 1.14（不是 1.22）：從底部放大太多會變成朝你逼近，
+	   小幅放大＋長距離上升才是「遠離、上去」 */
+	@keyframes ascend {
+		0% {
+			opacity: 1;
+			transform: translateX(-50%) scale(1);
+			filter: brightness(1) blur(0);
+		}
+		30% {
+			opacity: 0.85;
+			transform: translateX(-50%) scale(1.03) translateY(-10px);
+			filter: brightness(1.35) blur(1px);
+		}
+		100% {
+			opacity: 0;
+			transform: translateX(-50%) scale(1.14) translateY(-54px);
+			filter: brightness(2.3) blur(14px);
+		}
+	}
+
+	@keyframes halo-release {
+		0% {
+			opacity: 1;
+			transform: translateX(-50%) scale(1);
+		}
+		35% {
+			opacity: 0.55;
+			transform: translateX(-50%) scale(1.4);
+		}
+		100% {
+			opacity: 0;
+			transform: translateX(-50%) scale(1.75);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.shrine,
+		.frame,
+		.halo {
+			transition: none;
+		}
+
+		.halo {
+			animation: none;
+		}
+
+		/* 保留狀態差異，只拿掉呼吸 */
+		.shrine.lit .halo {
+			opacity: 1;
+		}
+
+		/* 不動也要讀得出「幾乎不在了」。臉留在 35% 會比文字更有存在感，所以更低 */
+		.shrine.releasing .frame {
+			animation: none;
+			opacity: 0.18;
+			filter: brightness(1.6);
+			box-shadow: none;
+			transform: translateX(-50%);
+		}
+
+		.shrine.releasing .halo {
+			animation: none;
+			opacity: 0;
+		}
 	}
 
 	.photo-err {
@@ -2040,6 +2342,18 @@
 		.ledger {
 			grid-template-columns: repeat(2, 1fr);
 			gap: 0.9rem 0.5rem;
+		}
+
+		/* 窄螢幕連手持木魚都只剩 ~190px，龕要跟著縮才不會壓過木魚 */
+		.shrine.has-photo {
+			--photo-w: 118px;
+			--photo-h: 150px;
+			--shrine-rise: 92px;
+		}
+
+		.halo {
+			width: 168px;
+			height: 86px;
 		}
 	}
 

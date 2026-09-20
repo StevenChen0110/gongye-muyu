@@ -22,8 +22,7 @@
 		onMinutes,
 		onToggle,
 		onDismiss,
-		onPhoto,
-		onClearPhoto
+		onPhoto
 	}: {
 		text: string;
 		minutes: number;
@@ -39,7 +38,6 @@
 		onToggle: () => void;
 		onDismiss: () => void;
 		onPhoto: (file: File) => void;
-		onClearPhoto: () => void;
 	} = $props();
 
 	let fileInput = $state<HTMLInputElement | null>(null);
@@ -64,10 +62,8 @@
 <div class="ritual">
 	{#if done}
 		<div class="ceremony" transition:fade={{ duration: 500 }}>
-			{#if photo}
-				<!-- 照片化成光散掉，不是被打碎。動作的對象是你的執念，不是照片裡的人 -->
-				<img class="gone-photo" src={photo} alt="" />
-			{/if}
+			<!-- 照片的化光在上面的龕裡演（見 +page.svelte 的 .shrine.releasing），
+			     不在這裡重畫一張——三個階段要是同一個物件才連得起來 -->
 			<p class="gone">{text}</p>
 			<p class="verdict">放下了。</p>
 			<p class="coda">願他安好，願你自在。</p>
@@ -75,9 +71,6 @@
 			<button class="again" onclick={onDismiss}>再來一次</button>
 		</div>
 	{:else if running}
-		{#if photo}
-			<img class="running-photo" src={photo} alt="" />
-		{/if}
 		<p class="target" aria-live="polite">正在超渡「{text}」</p>
 		<p class="status">
 			<span class="clock">{mmss}</span>
@@ -114,14 +107,9 @@
 			onchange={pick}
 		/>
 		{#if photo}
-			<div class="photo-row">
-				<img class="thumb-img" src={photo} alt="你放上的照片" />
-				<div class="photo-meta">
-					<span class="photo-name">已放上一張照片</span>
-					<small>只存在這台裝置，儀式結束後會自動刪掉</small>
-				</div>
-				<button class="photo-x" onclick={onClearPhoto} aria-label="移除照片">✕</button>
-			</div>
+			<!-- 照片本身已經立在上面的龕裡了，這裡只留換圖與那句隱私說明 -->
+			<button class="photo-swap" onclick={() => fileInput?.click()}>換一張照片</button>
+			<small class="photo-note">照片只存在這台裝置，儀式結束後會自動刪掉</small>
 		{:else}
 			<button class="photo-add" onclick={() => fileInput?.click()}>
 				<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -223,63 +211,25 @@
 		height: 16px;
 	}
 
-	.photo-row {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		padding: 0.45rem;
+	.photo-swap {
+		align-self: center;
+		padding: 0.3rem 0.7rem;
+		font-size: 0.78rem;
+		color: var(--ink-soft);
 		background: var(--surface-2);
-		border-radius: var(--r-sm);
-	}
-
-	.thumb-img {
-		width: 44px;
-		height: 44px;
-		object-fit: cover;
-		border-radius: calc(var(--r-sm) - 3px);
-		flex-shrink: 0;
-	}
-
-	.photo-meta {
-		display: flex;
-		flex-direction: column;
-		gap: 0.1rem;
-		min-width: 0;
-		flex: 1;
-	}
-
-	.photo-name {
-		font-size: 0.8rem;
-		color: var(--ink);
-	}
-
-	.photo-meta small {
-		font-size: 0.68rem;
-		color: var(--ink-faint);
-	}
-
-	.photo-x {
-		flex-shrink: 0;
-		width: 26px;
-		height: 26px;
-		font-size: 0.75rem;
-		color: var(--ink-faint);
 		border-radius: var(--r-full);
 		transition: color var(--fast);
 	}
 
-	.photo-x:hover {
+	.photo-swap:hover {
 		color: var(--ink);
 	}
 
-	/* 進行中：照片安靜地待著，不搶木魚的視線 */
-	.running-photo {
-		width: 68px;
-		height: 68px;
-		object-fit: cover;
-		border-radius: var(--r-sm);
-		margin: 0 auto 0.15rem;
-		opacity: 0.9;
+	/* 這句是有功能的：它告訴使用者這是你自己的執念，不是在留一份關於別人的紀錄 */
+	.photo-note {
+		text-align: center;
+		font-size: 0.68rem;
+		color: var(--ink-faint);
 	}
 
 	.track {
@@ -397,40 +347,6 @@
 		text-align: center;
 	}
 
-	/*
-	 * 照片化成光：先微微亮起來，再整個淡進白光裡。
-	 *
-	 * 刻意不用碎裂、燃燒那類效果——對著一個人的臉做破壞動作，整個儀式就從
-	 * 「我放下了」變成「我詛咒你」，那是完全不同的產品。這裡是溶解成光，
-	 * 收在祝福語上。
-	 */
-	.gone-photo {
-		width: 96px;
-		height: 96px;
-		object-fit: cover;
-		border-radius: var(--r-sm);
-		margin-bottom: 0.5rem;
-		animation: ascend 3.4s var(--ease) forwards;
-	}
-
-	@keyframes ascend {
-		0% {
-			opacity: 0.95;
-			transform: scale(1);
-			filter: brightness(1) blur(0);
-		}
-		45% {
-			opacity: 0.75;
-			transform: scale(1.06) translateY(-8px);
-			filter: brightness(1.5) blur(2px);
-		}
-		100% {
-			opacity: 0;
-			transform: scale(1.22) translateY(-30px);
-			filter: brightness(2.4) blur(12px);
-		}
-	}
-
 	/* 那件事散掉：放大、變淡、模糊 */
 	.gone {
 		margin: 0 0 0.4rem;
@@ -507,8 +423,7 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.gone,
-		.gone-photo {
+		.gone {
 			animation: none;
 			opacity: 0.35;
 		}

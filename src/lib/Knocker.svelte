@@ -240,7 +240,12 @@
 <style>
 	.wrap {
 		position: relative;
-		width: calc(min(340px, 74vw) * var(--scale));
+		/*
+		 * --knock-shrink 由外層決定（超渡放了照片時木魚要讓出上方的空間）。
+		 * 跟 --scale 相乘而不是取代它，尺寸預設 0.74/0.88/1 完全不受影響；
+		 * 沒有外層設定時預設 1，其他呼叫點一行都不用改。
+		 */
+		width: calc(min(340px, 74vw) * var(--scale) * var(--knock-shrink, 1));
 		margin: 0 auto;
 		transition: width 0.35s cubic-bezier(0.3, 0.8, 0.4, 1);
 	}
